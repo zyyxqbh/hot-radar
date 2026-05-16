@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/search.js": {
-      "runtime": "edge"
+      "runtime": "nodejs20.x"
     }
   }
 }
