@@ -1,8 +1,5 @@
 {
   "name": "hot-radar",
   "version": "1.0.0",
-  "type": "module",
-  "engines": {
-    "node": "24.x"
-  }
+  "type": "module"
 }
