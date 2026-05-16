@@ -1,28 +1,34 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  
+
   const { topic, label } = req.body;
-  
+
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "deepseek-chat",
+        messages: [
+          {
+            role: "system",
+            content: `你是信息助手。用户想了解"${label}"领域的最新热点。请根据你的知识返回4条近期重要动态，严格按如下JSON数组格式返回，不输出任何其他内容：
+[{"headline":"标题20字内","summary":"核心内容50字内","source":"来源媒体","url":"","topic":"${topic}"}]`
+          },
+          {
+            role: "user",
+            content: `请给我${label}领域最近的4条重要热点。`
+          }
+        ],
         max_tokens: 1000,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        system: `你是信息助手。搜索"${label}"领域最新热点，严格返回如下JSON数组，不输出任何其他内容：
-[{"headline":"标题20字内","summary":"核心内容50字内","source":"来源","url":"链接或空字符串","topic":"${topic}"}]`,
-        messages: [{ role: "user", content: `搜索${label}领域近期重要热点，返回4条。` }],
       }),
     });
 
     const data = await response.json();
-    const text = data.content.filter(b => b.type === "text").map(b => b.text).join("");
+    const text = data.choices?.[0]?.message?.content || "";
     const s = text.indexOf("["), e = text.lastIndexOf("]");
     if (s === -1 || e === -1) return res.json({ items: [] });
     const items = JSON.parse(text.slice(s, e + 1));
