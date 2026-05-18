@@ -1,5 +1,17 @@
 {
-  "name": "hot-radar",
-  "version": "1.0.0",
-  "type": "module"
+  "name": "hot-radar-v2",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "实时热点雷达 - 聚合AI、民生、白酒行业热点",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build needed'",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
