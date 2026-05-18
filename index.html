@@ -1,150 +1,413 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>热点雷达</title>
-<style>
-  :root {
-    --ink: #1a1a18; --paper: #f5f0e8;
-    --rule: #c8bfaa; --muted: #8a8070;
-    --accent: #c8401a;
-    --ai: #2d5a3d; --civil: #1a3a5c; --baijiu: #7a4520;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--paper); color: var(--ink); font-family: 'Noto Serif SC', serif; min-height: 100vh; }
-  .masthead { border-bottom: 3px double var(--ink); padding: 20px 32px 14px; display: flex; align-items: baseline; gap: 20; flex-wrap: wrap; }
-  .masthead-title { font-size: 2rem; font-weight: 700; letter-spacing: 0.12em; }
-  .masthead-sub { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: monospace; }
-  .masthead-date { margin-left: auto; font-size: 11px; color: var(--muted); text-align: right; font-family: monospace; line-height: 1.7; }
-  .tabs { display: flex; border-bottom: 1px solid var(--rule); padding: 0 32px; }
-  .tab { padding: 10px 18px; font-size: 13px; font-weight: 600; letter-spacing: 0.1em; cursor: pointer; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--muted); font-family: inherit; transition: all 0.15s; }
-  .tab.active { color: var(--ink); border-bottom-color: var(--ink); }
-  .tab[data-t="ai"].active { color: var(--ai); border-bottom-color: var(--ai); }
-  .tab[data-t="civil"].active { color: var(--civil); border-bottom-color: var(--civil); }
-  .tab[data-t="baijiu"].active { color: var(--baijiu); border-bottom-color: var(--baijiu); }
-  .main { padding: 28px 32px; max-width: 860px; }
-  .controls { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-  .btn { background: var(--ink); color: var(--paper); border: none; padding: 10px 28px; font-size: 14px; font-weight: 600; letter-spacing: 0.1em; cursor: pointer; font-family: inherit; transition: background 0.15s; }
-  .btn:hover { background: var(--accent); }
-  .btn:disabled { background: var(--rule); cursor: not-allowed; }
-  .hint { font-size: 12px; color: var(--muted); font-family: monospace; }
-  .empty { text-align: center; padding: 64px 0; color: var(--muted); }
-  .empty-icon { font-size: 48px; opacity: 0.25; margin-bottom: 16px; }
-  .empty p { font-size: 13px; line-height: 2; }
-  .error { border-left: 3px solid var(--accent); padding-left: 14px; color: var(--accent); font-size: 13px; margin-bottom: 24px; }
-  .group { margin-bottom: 32px; }
-  .group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; color: var(--muted); font-family: monospace; padding-bottom: 8px; }
-  .news-list { border-top: 2px solid var(--ink); }
-  .news-item { padding: 18px 0; border-bottom: 1px solid var(--rule); display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start; animation: fadeIn 0.3s ease both; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .headline { font-size: 15px; font-weight: 600; line-height: 1.5; margin-bottom: 6px; }
-  .headline a { color: var(--ink); text-decoration: none; }
-  .headline a:hover { color: var(--accent); }
-  .summary { font-size: 13px; color: #4a4540; line-height: 1.7; margin-bottom: 6px; }
-  .source { font-size: 11px; color: var(--muted); font-family: monospace; }
-  .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 2px 8px; border: 1px solid currentColor; white-space: nowrap; align-self: start; margin-top: 2px; }
-  .tag.ai { color: var(--ai); } .tag.civil { color: var(--civil); } .tag.baijiu { color: var(--baijiu); }
-  @media (max-width: 600px) { .masthead { padding: 16px 20px 12px; } .tabs { padding: 0 16px; } .main { padding: 20px 16px; } }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>热点雷达 - 实时热点聚合</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .update-time {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            flex: 1;
+            background: white;
+            border: none;
+            padding: 15px;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .content {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .news-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.2s;
+        }
+
+        .news-item:last-child {
+            border-bottom: none;
+        }
+
+        .news-item:hover {
+            background: #f8f9fa;
+        }
+
+        .news-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .rank-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .rank-badge.top3 {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .news-desc {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .news-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+            color: #999;
+            flex-wrap: wrap;
+        }
+
+        .news-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .hot-value {
+            color: #f5576c;
+            font-weight: 600;
+        }
+
+        .news-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .news-link:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #f5576c;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .news-title {
+                font-size: 16px;
+            }
+        }
+    </style>
 </head>
 <body>
-<div class="masthead">
-  <div><div class="masthead-title">热点雷达</div><div class="masthead-sub">AI · 民生 · 白酒 — 个人信息中枢</div></div>
-  <div class="masthead-date" id="dateEl"></div>
-</div>
-<div class="tabs">
-  <button class="tab active" data-t="all">全部</button>
-  <button class="tab" data-t="ai">AI</button>
-  <button class="tab" data-t="civil">民生</button>
-  <button class="tab" data-t="baijiu">白酒</button>
-</div>
-<div class="main">
-  <div class="controls">
-    <button class="btn" id="btn">刷新热点</button>
-    <span class="hint" id="hint">点击获取今日热点</span>
-  </div>
-  <div id="area">
-    <div class="empty"><div class="empty-icon">◎</div><p>点击「刷新热点」<br>获取 AI、民生、白酒三个领域的当日热点</p></div>
-  </div>
-</div>
-<script>
-const TOPICS = [
-  {key:"ai",label:"AI"},{key:"civil",label:"民生"},{key:"baijiu",label:"白酒"}
-];
-let allResults = [], currentTab = "all";
+    <div class="container">
+        <div class="header">
+            <h1>🎯 热点雷达</h1>
+            <p>实时聚合 AI · 民生 · 白酒行业热点</p>
+        </div>
 
-function updateDate() {
-  const d = new Date();
-  const days = ["日","一","二","三","四","五","六"];
-  document.getElementById("dateEl").innerHTML =
-    `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 星期${days[d.getDay()]}<br>${d.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} 更新`;
-}
-updateDate();
+        <div class="controls">
+            <button class="refresh-btn" onclick="refreshNews()">🔄 刷新热点</button>
+            <div class="update-time" id="updateTime">点击刷新获取最新数据</div>
+        </div>
 
-document.querySelectorAll(".tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    tab.classList.add("active");
-    currentTab = tab.dataset.t;
-    if (allResults.length) render();
-  });
-});
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('ai')">🤖 AI领域</button>
+            <button class="tab" onclick="switchTab('society')">🔥 民生热点</button>
+            <button class="tab" onclick="switchTab('liquor')">🍶 白酒行业</button>
+        </div>
 
-document.getElementById("btn").addEventListener("click", fetchAll);
+        <div class="content">
+            <div id="ai-content" class="tab-content active">
+                <div class="empty">点击"刷新热点"开始使用</div>
+            </div>
+            <div id="society-content" class="tab-content">
+                <div class="empty">点击"刷新热点"开始使用</div>
+            </div>
+            <div id="liquor-content" class="tab-content">
+                <div class="empty">点击"刷新热点"开始使用</div>
+            </div>
+        </div>
+    </div>
 
-async function fetchAll() {
-  const btn = document.getElementById("btn");
-  const hint = document.getElementById("hint");
-  const area = document.getElementById("area");
-  btn.disabled = true;
-  hint.textContent = "搜索中…";
-  area.innerHTML = `<div class="hint" style="padding:48px 0">正在搜索三个领域，请稍候…</div>`;
-  allResults = [];
-  try {
-    for (const t of TOPICS) {
-      hint.textContent = `正在搜索：${t.label}…`;
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({topic: t.key, label: t.label})
-      });
-      const data = await res.json();
-      if (data.items) allResults.push(...data.items);
-    }
-    render();
-    hint.textContent = `共 ${allResults.length} 条 · ${new Date().toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} 更新`;
-    updateDate();
-  } catch(e) {
-    area.innerHTML = `<div class="error">出错了：${e.message}</div>`;
-    hint.textContent = "出错了";
-  } finally {
-    btn.disabled = false;
-  }
-}
+    <script>
+        let currentTab = 'ai';
 
-function render() {
-  const area = document.getElementById("area");
-  const filtered = currentTab === "all" ? allResults : allResults.filter(r => r.topic === currentTab);
-  const groups = currentTab === "all" ? ["ai","civil","baijiu"] : [currentTab];
-  const label = k => ({ai:"AI",civil:"民生",baijiu:"白酒"}[k]||k);
-  if (!filtered.length) { area.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><p>暂无结果</p></div>`; return; }
-  let html = "";
-  groups.forEach(gk => {
-    const items = filtered.filter(r => r.topic === gk);
-    if (!items.length) return;
-    html += `<div class="group"><div class="group-label">${label(gk)}</div><div class="news-list">`;
-    items.forEach((item,i) => {
-      const link = item.url ? `<a href="${item.url}" target="_blank" rel="noopener">${item.headline}</a>` : item.headline;
-      html += `<div class="news-item" style="animation-delay:${i*0.06}s">
-        <div><div class="headline">${link}</div><div class="summary">${item.summary||""}</div><div class="source">${item.source||"网络"}</div></div>
-        <span class="tag ${item.topic}">${label(item.topic)}</span>
-      </div>`;
-    });
-    html += `</div></div>`;
-  });
-  area.innerHTML = html;
-}
-</script>
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // 更新标签按钮状态
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新内容显示
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tab}-content`).classList.add('active');
+        }
+
+        async function refreshNews() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ 获取中...';
+
+            // 显示加载状态
+            ['ai', 'society', 'liquor'].forEach(tab => {
+                document.getElementById(`${tab}-content`).innerHTML = '<div class="loading">正在获取最新热点</div>';
+            });
+
+            try {
+                const response = await fetch('/api/search');
+                
+                if (!response.ok) {
+                    throw new Error('网络请求失败');
+                }
+
+                const data = await response.json();
+
+                // 更新时间
+                document.getElementById('updateTime').textContent = `更新时间: ${data.updateTime}`;
+
+                // 渲染各个分类
+                renderNews('ai', data.ai, 'AI');
+                renderNews('society', data.society, '民生');
+                renderNews('liquor', data.liquor, '白酒');
+
+            } catch (error) {
+                console.error('获取失败:', error);
+                ['ai', 'society', 'liquor'].forEach(tab => {
+                    document.getElementById(`${tab}-content`).innerHTML = 
+                        '<div class="error">获取失败，请检查网络后重试</div>';
+                });
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 刷新热点';
+            }
+        }
+
+        function renderNews(category, items, label) {
+            const container = document.getElementById(`${category}-content`);
+            
+            if (!items || items.length === 0) {
+                container.innerHTML = `<div class="empty">暂无${label}热点数据</div>`;
+                return;
+            }
+
+            const html = items.map(item => {
+                let titleHtml = item.title;
+                
+                // 如果有排名，添加排名徽章
+                if (item.rank) {
+                    const badgeClass = item.rank <= 3 ? 'rank-badge top3' : 'rank-badge';
+                    titleHtml = `<span class="${badgeClass}">#${item.rank}</span>${item.title.replace(/^#\d+\s*/, '')}`;
+                }
+
+                let metaHtml = `
+                    <span>📅 ${item.time}</span>
+                    <span>📰 ${item.source}</span>
+                `;
+
+                // 如果有热度值（民生热点）
+                if (item.hot) {
+                    metaHtml += `<span>🔥 <span class="hot-value">${formatHot(item.hot)}</span></span>`;
+                }
+
+                // 如果有股价信息（白酒行业）
+                if (item.stockInfo) {
+                    metaHtml += `<span>📈 ${item.stockInfo}</span>`;
+                }
+
+                return `
+                    <div class="news-item">
+                        <div class="news-title">${titleHtml}</div>
+                        <div class="news-desc">${item.description}</div>
+                        <div class="news-meta">
+                            ${metaHtml}
+                            ${item.url ? `<a href="${item.url}" target="_blank" class="news-link">查看详情 →</a>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        function formatHot(hot) {
+            if (typeof hot === 'number') {
+                if (hot >= 100000000) {
+                    return (hot / 100000000).toFixed(1) + '亿';
+                } else if (hot >= 10000) {
+                    return (hot / 10000).toFixed(1) + '万';
+                }
+                return hot.toLocaleString();
+            }
+            return hot;
+        }
+
+        // 页面加载时自动刷新一次
+        window.addEventListener('load', () => {
+            // 可选：自动加载，或者让用户手动点击
+            // refreshNews();
+        });
+    </script>
 </body>
 </html>
