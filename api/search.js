@@ -170,7 +170,7 @@ async function getSocietyNews() {
   }
 }
 
-// ==================== 白酒行业：新浪财经 + DeepSeek 补充 ====================
+// ==================== 白酒行业：DeepSeek ====================
 async function getLiquorNews() {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   
