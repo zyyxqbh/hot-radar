@@ -107,64 +107,42 @@ async function getAINews() {
 }
 
 async function getSocietyNews() {
-  // 主：知乎热榜
-  try {
-    const res = await req(
-      'https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=10',
-      { headers: { 'Accept': 'application/json', 'x-api-version': '3.0.76' } },
-      6000
-    );
-    const data = await res.json();
-    const list = data?.data || [];
-    if (list.length > 0) {
-      return list.slice(0, 10).map((item, i) => {
-        const t = item.target || {};
-        return {
-          title: `#${i + 1} ${t.title || ''}`,
-          description: t.excerpt || t.description || '点击查看详情',
-          source: '知乎热榜',
-          time: getNow(),
-          url: `https://www.zhihu.com/question/${t.id || ''}`,
-          rank: i + 1,
-          hot: item.detail_text || ''
-        };
-      });
-    }
-  } catch (e) { console.error('知乎热榜失败:', e.message); }
+  const fmt = (item, i, source) => ({
+    title: `#${i + 1} ${item.title || item.name || ''}`,
+    description: item.desc || item.note || `热度: ${item.hot || item.hotNum || '热搜'}`,
+    source: source,
+    time: getNow(),
+    url: item.url || item.mobilUrl || `https://s.weibo.com/weibo?q=${encodeURIComponent(item.title || item.name || '')}`,
+    rank: i + 1,
+    hot: item.hot || item.hotNum || 0
+  });
 
-  // 备用：今日头条热榜
+  // 主：vvhan 微博热搜
   try {
-    const res = await req('https://api.vvhan.com/api/hotlist/toutiaoHot', {}, 5000);
+    const res = await req('https://api.vvhan.com/api/hotlist/wbHot', {}, 6000);
     const data = await res.json();
     if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-      return data.data.slice(0, 10).map((item, i) => ({
-        title: `#${i + 1} ${item.title || item.name}`,
-        description: item.desc || '今日头条热点',
-        source: '今日头条',
-        time: getNow(),
-        url: item.url || 'https://www.toutiao.com',
-        rank: i + 1,
-        hot: item.hot || 0
-      }));
+      return data.data.slice(0, 10).map((item, i) => fmt(item, i, '微博热搜'));
     }
-  } catch (e) { console.error('今日头条失败:', e.message); }
+  } catch (e) { console.error('vvhan微博失败:', e.message); }
 
-  // 备用2：vvhan 微博
+  // 备用1：今日头条
   try {
-    const res = await req('https://api.vvhan.com/api/hotlist/wbHot', {}, 5000);
+    const res = await req('https://api.vvhan.com/api/hotlist/toutiaoHot', {}, 6000);
     const data = await res.json();
     if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-      return data.data.slice(0, 10).map((item, i) => ({
-        title: `#${i + 1} ${item.title || item.name}`,
-        description: item.desc || `热度: ${item.hot || '热搜'}`,
-        source: '微博热搜',
-        time: getNow(),
-        url: item.url || `https://s.weibo.com/weibo?q=${encodeURIComponent(item.title || '')}`,
-        rank: i + 1,
-        hot: item.hot || 0
-      }));
+      return data.data.slice(0, 10).map((item, i) => fmt(item, i, '今日头条'));
     }
-  } catch (e) { console.error('vvhan失败:', e.message); }
+  } catch (e) { console.error('头条失败:', e.message); }
+
+  // 备用2：B站热搜
+  try {
+    const res = await req('https://api.vvhan.com/api/hotlist/bili', {}, 6000);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data.data.slice(0, 10).map((item, i) => fmt(item, i, 'B站热搜'));
+    }
+  } catch (e) { console.error('B站失败:', e.message); }
 
   return [];
 }
