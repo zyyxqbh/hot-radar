@@ -6,201 +6,81 @@
   <title>热点雷达</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f0f2f5;
-      color: #1a1a1a;
-      min-height: 100vh;
-    }
-
-    /* 顶部栏 */
-    .header {
-      background: #fff;
-      border-bottom: 1px solid #e8e8e8;
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    }
-    .header-left { display: flex; align-items: center; gap: 10px; }
-    .logo { font-size: 22px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px; }
-    .logo span { color: #e85d04; }
-    .tagline { font-size: 13px; color: #888; }
+    .header { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo span { color: #c0392b; }
+    .tagline { font-size: 12px; color: #999; margin-top: 2px; }
     .update-time { font-size: 12px; color: #aaa; }
-
-    /* 刷新按钮 */
-    .refresh-btn {
-      background: #1a1a1a;
-      color: #fff;
-      border: none;
-      padding: 9px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: background 0.2s, transform 0.1s;
-    }
+    .refresh-btn { background: #1a1a1a; color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.2s; }
     .refresh-btn:hover { background: #333; }
-    .refresh-btn:active { transform: scale(0.97); }
-    .refresh-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+    .refresh-btn:disabled { background: #ccc; cursor: not-allowed; }
 
-    /* 主体布局 */
-    .main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+    .main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
 
-    /* 标签切换 */
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-    }
-    .tab-btn {
-      flex-shrink: 0;
-      padding: 8px 18px;
-      border: 1.5px solid #e0e0e0;
-      border-radius: 20px;
-      background: #fff;
-      color: #555;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s;
-      white-space: nowrap;
-    }
-    .tab-btn.active {
-      background: #1a1a1a;
-      color: #fff;
-      border-color: #1a1a1a;
-    }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab-btn { padding: 8px 18px; border: 1.5px solid #e0e0e0; border-radius: 20px; background: #fff; color: #555; font-size: 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .tab-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
 
-    /* 面板 */
     .panel { display: none; }
     .panel.active { display: block; }
 
-    /* 加载占位 */
-    .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 60px 0;
-      color: #aaa;
-      gap: 12px;
-      font-size: 14px;
-    }
-    .spinner {
-      width: 28px; height: 28px;
-      border: 3px solid #eee;
-      border-top-color: #1a1a1a;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #aaa; gap: 12px; font-size: 14px; }
+    .spinner { width: 26px; height: 26px; border: 3px solid #eee; border-top-color: #1a1a1a; border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .empty { text-align: center; padding: 60px 0; color: #bbb; font-size: 14px; line-height: 2; }
 
-    .empty {
-      text-align: center;
-      padding: 60px 0;
-      color: #bbb;
-      font-size: 14px;
-      line-height: 2;
-    }
-
-    /* 卡片网格 */
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 14px;
-    }
-
-    /* 单张卡片 */
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-      border: 1px solid #f0f0f0;
-      transition: box-shadow 0.2s, transform 0.2s;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    /* 通用卡片 */
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 8px; transition: box-shadow 0.2s, transform 0.2s; }
     .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.10); transform: translateY(-2px); }
-
-    .card-rank {
-      display: inline-block;
-      background: #e85d04;
-      color: #fff;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 4px;
-      width: fit-content;
-    }
-    .card-rank.top3 { background: #c44d00; }
-
-    .card-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1a1a1a;
-      line-height: 1.4;
-    }
+    .card-rank { display: inline-block; background: #c0392b; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; width: fit-content; }
+    .card-rank.top3 { background: #96261f; }
+    .card-title { font-size: 15px; font-weight: 600; line-height: 1.4; }
     .card-title a { color: inherit; text-decoration: none; }
-    .card-title a:hover { color: #e85d04; }
-
-    .card-desc {
-      font-size: 13px;
-      color: #666;
-      line-height: 1.6;
-      flex: 1;
-    }
-
-    .card-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-    }
-    .card-source {
-      font-size: 12px;
-      color: #aaa;
-      background: #f5f5f5;
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
+    .card-title a:hover { color: #c0392b; }
+    .card-desc { font-size: 13px; color: #666; line-height: 1.6; flex: 1; }
+    .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .card-source { font-size: 12px; color: #aaa; background: #f5f5f5; padding: 2px 8px; border-radius: 4px; }
     .card-time { font-size: 12px; color: #bbb; }
 
-    /* 股价特殊样式 */
-    .stock-info {
-      font-size: 13px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 6px;
-      background: #f0fdf4;
-      color: #16a34a;
-      width: fit-content;
-    }
-    .stock-info.down { background: #fef2f2; color: #dc2626; }
+    /* 大盘指数栏 */
+    .indices-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .index-card { background: #fff; border-radius: 10px; padding: 12px 14px; border: 1px solid #f0f0f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .index-name { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .index-price { font-size: 18px; font-weight: 700; }
+    .index-change { font-size: 12px; margin-top: 2px; font-weight: 500; }
+    .up .index-price, .up .index-change { color: #c0392b; }
+    .down .index-price, .down .index-change { color: #27ae60; }
+    .flat .index-price, .flat .index-change { color: #888; }
+
+    /* AI 解读卡片 */
+    .ai-summary { background: linear-gradient(135deg, #1a1a1a 0%, #333 100%); color: #fff; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .ai-summary-header { font-size: 13px; color: #aaa; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .ai-summary-text { font-size: 14px; line-height: 1.8; }
+
+    /* 子标签 */
+    .sub-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .sub-tab { padding: 6px 14px; border: 1px solid #e0e0e0; border-radius: 16px; background: #fff; color: #666; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+    .sub-tab.active { background: #c0392b; color: #fff; border-color: #c0392b; }
+    .sub-panel { display: none; }
+    .sub-panel.active { display: block; }
 
     @media (max-width: 600px) {
-      .header { padding: 12px 16px; }
-      .tagline { display: none; }
+      .indices-bar { grid-template-columns: repeat(2, 1fr); }
       .cards { grid-template-columns: 1fr; }
+      .tagline { display: none; }
+      .header { padding: 12px 16px; }
     }
   </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="header-left">
+  <div>
     <div class="logo">热<span>点</span>雷达</div>
-    <div class="tagline">AI · 热榜 · 白酒</div>
+    <div class="tagline">AI科技 · 民生热点 · 投资参考</div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
     <div class="update-time" id="updateTime"></div>
@@ -214,99 +94,145 @@
 <div class="main">
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('ai', this)">🤖 AI 科技</button>
-    <button class="tab-btn" onclick="switchTab('society', this)">🔥 热榜</button>
-    <button class="tab-btn" onclick="switchTab('liquor', this)">🍷 白酒行业</button>
+    <button class="tab-btn" onclick="switchTab('society', this)">🔥 民生热点</button>
+    <button class="tab-btn" onclick="switchTab('investment', this)">📈 投资参考</button>
   </div>
 
   <div class="panel active" id="panel-ai">
     <div class="empty">点击「刷新热点」加载今日 AI 资讯</div>
   </div>
+
   <div class="panel" id="panel-society">
     <div class="empty">点击「刷新热点」加载今日热榜</div>
   </div>
-  <div class="panel" id="panel-liquor">
-    <div class="empty">点击「刷新热点」加载白酒行情</div>
+
+  <div class="panel" id="panel-investment">
+    <div class="empty">点击「刷新热点」加载今日市场行情与解读</div>
   </div>
 </div>
 
 <script>
-  function switchTab(name, btn) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('panel-' + name).classList.add('active');
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function switchSubTab(name, btn) {
+  btn.closest('.panel').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+  btn.closest('.panel').querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sub-' + name).classList.add('active');
+}
+
+function setLoading() {
+  const loadingHtml = '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  ['ai', 'society', 'investment'].forEach(k => {
+    document.getElementById('panel-' + k).innerHTML = loadingHtml;
+  });
+}
+
+function esc(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildCard(item) {
+  const rankHtml = item.rank
+    ? '<div class="card-rank ' + (item.rank <= 3 ? 'top3' : '') + '">#' + item.rank + '</div>' : '';
+  const titleHtml = item.url
+    ? '<a href="' + esc(item.url) + '" target="_blank" rel="noopener">' + esc(item.title) + '</a>'
+    : esc(item.title);
+  return '<div class="card">' +
+    rankHtml +
+    '<div class="card-title">' + titleHtml + '</div>' +
+    (item.description ? '<div class="card-desc">' + esc(item.description) + '</div>' : '') +
+    '<div class="card-footer">' +
+    '<span class="card-source">' + esc(item.source || '') + '</span>' +
+    '<span class="card-time">' + esc(item.time || '') + '</span>' +
+    '</div></div>';
+}
+
+function renderBasicPanel(panelId, items) {
+  const panel = document.getElementById('panel-' + panelId);
+  if (!items || items.length === 0) {
+    panel.innerHTML = '<div class="empty">暂无数据，请稍后重试</div>';
+    return;
+  }
+  panel.innerHTML = '<div class="cards">' + items.map(buildCard).join('') + '</div>';
+}
+
+function renderInvestment(data) {
+  const panel = document.getElementById('panel-investment');
+
+  // 大盘指数
+  let indicesHtml = '';
+  if (data.indices && data.indices.length > 0) {
+    indicesHtml = '<div class="indices-bar">' +
+      data.indices.map(function(idx) {
+        const cls = parseFloat(idx.changePct) > 0 ? 'up' : parseFloat(idx.changePct) < 0 ? 'down' : 'flat';
+        const arrow = parseFloat(idx.changePct) > 0 ? '▲' : parseFloat(idx.changePct) < 0 ? '▼' : '—';
+        return '<div class="index-card ' + cls + '">' +
+          '<div class="index-name">' + esc(idx.name) + '</div>' +
+          '<div class="index-price">' + esc(idx.price) + '</div>' +
+          '<div class="index-change">' + arrow + ' ' + esc(idx.change) + ' (' + (parseFloat(idx.changePct) >= 0 ? '+' : '') + esc(idx.changePct) + '%)</div>' +
+          '</div>';
+      }).join('') +
+      '</div>';
   }
 
-  function setLoading() {
-    ['ai', 'society', 'liquor'].forEach(k => {
-      document.getElementById('panel-' + k).innerHTML =
-        '<div class="loading"><div class="spinner"></div>加载中...</div>';
+  // AI 解读
+  let summaryHtml = '';
+  if (data.aiSummary) {
+    summaryHtml = '<div class="ai-summary">' +
+      '<div class="ai-summary-header">🤖 今日 AI 解读（大白话版）</div>' +
+      '<div class="ai-summary-text">' + esc(data.aiSummary) + '</div>' +
+      '</div>';
+  }
+
+  // 子标签内容
+  function subCards(items) {
+    if (!items || items.length === 0) return '<div class="empty">暂无数据</div>';
+    return '<div class="cards">' + items.map(buildCard).join('') + '</div>';
+  }
+
+  const subTabsHtml =
+    '<div class="sub-tabs">' +
+    '<button class="sub-tab active" onclick="switchSubTab(\'hotSectors\', this)">🔥 热门板块</button>' +
+    '<button class="sub-tab" onclick="switchSubTab(\'liquor\', this)">🍷 白酒专区</button>' +
+    '<button class="sub-tab" onclick="switchSubTab(\'fundPolicy\', this)">📊 基金&政策</button>' +
+    '</div>' +
+    '<div id="sub-hotSectors" class="sub-panel active">' + subCards(data.hotSectors) + '</div>' +
+    '<div id="sub-liquor" class="sub-panel">' + subCards(data.liquor) + '</div>' +
+    '<div id="sub-fundPolicy" class="sub-panel">' + subCards(data.fundPolicy) + '</div>';
+
+  panel.innerHTML = indicesHtml + summaryHtml + subTabsHtml;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff;display:inline-block;vertical-align:middle;margin-right:6px;"></div>加载中';
+  setLoading();
+
+  try {
+    const res = await fetch('/api/search');
+    const data = await res.json();
+    renderBasicPanel('ai', data.ai);
+    renderBasicPanel('society', data.society);
+    renderInvestment(data.investment || {});
+    if (data.updateTime) {
+      document.getElementById('updateTime').textContent = '更新于 ' + data.updateTime;
+    }
+  } catch (e) {
+    ['ai', 'society', 'investment'].forEach(k => {
+      document.getElementById('panel-' + k).innerHTML = '<div class="empty">请求失败，请检查网络后重试</div>';
     });
   }
 
-  function renderCards(panelId, items, type) {
-    const panel = document.getElementById('panel-' + panelId);
-    if (!items || items.length === 0) {
-      panel.innerHTML = '<div class="empty">暂无数据，请稍后刷新重试</div>';
-      return;
-    }
-    panel.innerHTML = '<div class="cards">' + items.map(item => buildCard(item, type)).join('') + '</div>';
-  }
-
-  function buildCard(item, type) {
-    const rankHtml = item.rank
-      ? `<div class="card-rank ${item.rank <= 3 ? 'top3' : ''}">#${item.rank}</div>` : '';
-
-    const titleHtml = item.url
-      ? `<a href="${item.url}" target="_blank" rel="noopener">${escHtml(item.title)}</a>`
-      : escHtml(item.title);
-
-    const isDown = item.stockInfo && item.stockInfo.includes('-');
-    const stockHtml = item.stockInfo
-      ? `<div class="stock-info ${isDown ? 'down' : ''}">${escHtml(item.stockInfo)}</div>` : '';
-
-    return `
-      <div class="card">
-        ${rankHtml}
-        <div class="card-title">${titleHtml}</div>
-        ${item.description ? `<div class="card-desc">${escHtml(item.description)}</div>` : ''}
-        ${stockHtml}
-        <div class="card-footer">
-          <span class="card-source">${escHtml(item.source || '')}</span>
-          <span class="card-time">${escHtml(item.time || '')}</span>
-        </div>
-      </div>`;
-  }
-
-  function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  async function loadData() {
-    const btn = document.getElementById('refreshBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff"></div> 加载中';
-    setLoading();
-
-    try {
-      const res = await fetch('/api/search');
-      const data = await res.json();
-      renderCards('ai', data.ai, 'ai');
-      renderCards('society', data.society, 'society');
-      renderCards('liquor', data.liquor, 'liquor');
-      if (data.updateTime) {
-        document.getElementById('updateTime').textContent = '更新于 ' + data.updateTime;
-      }
-    } catch (e) {
-      ['ai', 'society', 'liquor'].forEach(k => {
-        document.getElementById('panel-' + k).innerHTML =
-          '<div class="empty">请求失败，请检查网络后重试</div>';
-      });
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0018.49 15"/></svg> 刷新热点`;
-  }
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0018.49 15"/></svg> 刷新热点';
+}
 </script>
 </body>
 </html>
