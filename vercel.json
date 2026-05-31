@@ -3,12 +3,6 @@
   "regions": ["hkg1"],
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs18.x",
-      "regions": ["hkg1"]
-    }
-  },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/$1" }
