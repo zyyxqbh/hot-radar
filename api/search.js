@@ -6,16 +6,16 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  const [ai, society, liquor] = await Promise.allSettled([
+  const [ai, society, investment] = await Promise.allSettled([
     getAINews(),
     getSocietyNews(),
-    getLiquorNews()
+    getInvestmentData()
   ]);
 
   res.status(200).json({
-    ai:      ai.status      === 'fulfilled' ? ai.value      : [],
-    society: society.status === 'fulfilled' ? society.value : [],
-    liquor:  liquor.status  === 'fulfilled' ? liquor.value  : [],
+    ai:         ai.status         === 'fulfilled' ? ai.value         : [],
+    society:    society.status    === 'fulfilled' ? society.value    : [],
+    investment: investment.status === 'fulfilled' ? investment.value : { indices: [], aiSummary: '', hotSectors: [], liquor: [], fundPolicy: [] },
     updateTime: getNow()
   });
 }
@@ -56,12 +56,7 @@ function parseRSS(xml) {
                c.match(/<link[^>]+href="([^"]+)"/) ||
                c.match(/<guid[^>]*>([^<]+)<\/guid>/);
     const desc = get('description').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ').trim().substring(0, 120);
-    const item = {
-      title: get('title'),
-      description: desc,
-      pubDate: get('pubDate') || get('dc:date'),
-      url: lm ? lm[1].trim() : ''
-    };
+    const item = { title: get('title'), description: desc, pubDate: get('pubDate') || get('dc:date'), url: lm ? lm[1].trim() : '' };
     if (item.title) items.push(item);
   }
   return items;
@@ -77,168 +72,139 @@ async function httpGet(url, opts, ms) {
       signal: ctrl.signal,
       headers: Object.assign({ 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, opts.headers || {})
     }, opts));
-  } finally {
-    clearTimeout(id);
-  }
+  } finally { clearTimeout(id); }
 }
 
-async function getAINews() {
-  var KW = ['AI', '人工智能', '大模型', 'GPT', 'OpenAI', 'Anthropic', 'Claude',
-    'Gemini', '文心', '通义', '智谱', 'DeepSeek', 'LLM', 'Sora', '多模态'];
+// ── AI 科技 ───────────────────────────────────────────────────
 
-  var sources = [
+async function getAINews() {
+  const KW = ['AI', '人工智能', '大模型', 'GPT', 'OpenAI', 'Anthropic', 'Claude',
+    'Gemini', '文心', '通义', '智谱', 'DeepSeek', 'LLM', 'Sora', '多模态'];
+  const sources = [
     { url: 'https://www.qbitai.com/feed',   name: '量子位',   filter: false },
     { url: 'https://www.jiqizhixin.com/rss', name: '机器之心', filter: false },
     { url: 'https://www.ithome.com/rss/',    name: 'IT之家',   filter: true  }
   ];
-
-  var results = [];
-  for (var i = 0; i < sources.length; i++) {
-    var src = sources[i];
+  const results = [];
+  for (const src of sources) {
     try {
-      var res = await httpGet(src.url, {}, 6000);
+      const res = await httpGet(src.url, {}, 6000);
       if (!res.ok) continue;
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (src.filter) {
-        items = items.filter(function(item) {
-          return KW.some(function(k) { return item.title.includes(k) || item.description.includes(k); });
-        });
-      }
-      var formatted = items.slice(0, 5).map(function(item) {
-        return {
-          title: item.title,
-          description: item.description || '点击查看详情',
-          source: src.name,
-          time: formatDate(item.pubDate),
-          url: item.url
-        };
-      });
-      results = results.concat(formatted);
-    } catch (e) {
-      console.error('AI RSS ' + src.name + ': ' + e.message);
-    }
+      const xml = await res.text();
+      let items = parseRSS(xml);
+      if (src.filter) items = items.filter(i => KW.some(k => i.title.includes(k) || i.description.includes(k)));
+      results.push(...items.slice(0, 5).map(i => ({ title: i.title, description: i.description || '点击查看详情', source: src.name, time: formatDate(i.pubDate), url: i.url })));
+    } catch (e) { console.error('AI ' + src.name + ': ' + e.message); }
   }
-
-  var seen = new Set();
-  return results.filter(function(item) {
-    if (seen.has(item.title)) return false;
-    seen.add(item.title);
-    return true;
-  }).slice(0, 8);
+  const seen = new Set();
+  return results.filter(i => { if (seen.has(i.title)) return false; seen.add(i.title); return true; }).slice(0, 8);
 }
 
+// ── 民生热点 ──────────────────────────────────────────────────
+
 async function getSocietyNews() {
-  var attempts = [
-    'https://rsshub.rssforever.com/weibo/search/hot',
-    'https://rsshub.rssforever.com/zhihu/hot',
-    'https://rss.shab.fun/weibo/search/hot',
-    'https://rss.shab.fun/zhihu/hot',
-    'https://hub.slarker.me/weibo/search/hot',
-    'https://hub.slarker.me/zhihu/hot',
-    'https://rsshub.app/weibo/search/hot',
-    'https://rsshub.app/zhihu/hot'
+  const attempts = [
+    { url: 'https://rsshub.rssforever.com/weibo/search/hot', name: '微博热搜' },
+    { url: 'https://rsshub.rssforever.com/zhihu/hot',        name: '知乎热榜' },
+    { url: 'https://rss.shab.fun/weibo/search/hot',          name: '微博热搜' },
+    { url: 'https://rss.shab.fun/zhihu/hot',                 name: '知乎热榜' },
+    { url: 'https://hub.slarker.me/weibo/search/hot',        name: '微博热搜' },
+    { url: 'https://rsshub.rssforever.com/bilibili/hot-search', name: 'B站热搜' },
+    { url: 'https://rsshub.app/weibo/search/hot',            name: '微博热搜' },
+    { url: 'https://rsshub.app/zhihu/hot',                   name: '知乎热榜' }
   ];
-
-  var names = {
-    'weibo': '微博热搜',
-    'zhihu': '知乎热榜'
-  };
-
-  for (var i = 0; i < attempts.length; i++) {
-    var url = attempts[i];
-    var name = url.includes('weibo') ? '微博热搜' : '知乎热榜';
+  for (const a of attempts) {
     try {
-      console.log('尝试: ' + url);
-      var res = await httpGet(url, {}, 4000);
-      if (!res.ok) { console.log('状态码失败: ' + res.status); continue; }
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (items.length === 0) { console.log('解析结果为空'); continue; }
-      console.log('民生成功: ' + url + ' (' + items.length + '条)');
-      return items.slice(0, 10).map(function(item, idx) {
-        return {
-          title: '#' + (idx + 1) + ' ' + item.title,
-          description: item.description || '点击查看详情',
-          source: name,
-          time: formatDate(item.pubDate) || getNow(),
-          url: item.url,
-          rank: idx + 1
-        };
-      });
-    } catch (e) {
-      console.error('失败 ' + url + ': ' + e.message);
-    }
+      const res = await httpGet(a.url, {}, 4000);
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const items = parseRSS(xml);
+      if (items.length === 0) continue;
+      console.log('民生成功: ' + a.url);
+      return items.slice(0, 10).map((item, idx) => ({
+        title: '#' + (idx + 1) + ' ' + item.title,
+        description: item.description || '点击查看详情',
+        source: a.name,
+        time: formatDate(item.pubDate) || getNow(),
+        url: item.url,
+        rank: idx + 1
+      }));
+    } catch (e) { console.error('民生失败 ' + a.url + ': ' + e.message); }
   }
   return [];
 }
-async function getLiquorNews() {
-  var stocks = [
-    { secid: '1.600519', name: '贵州茅台', code: 'sh600519' },
-    { secid: '0.000858', name: '五粮液',   code: 'sz000858' },
-    { secid: '0.000568', name: '泸州老窖', code: 'sz000568' },
-    { secid: '1.600809', name: '山西汾酒', code: 'sh600809' }
+
+// ── 投资参考 ──────────────────────────────────────────────────
+
+async function getInvestmentData() {
+  const [indicesRes, sectorsRes, liquorRes, fundRes] = await Promise.allSettled([
+    getIndices(),
+    getNewsByKeyword('涨停 板块', 6),
+    getNewsByKeyword('白酒 茅台 五粮液', 6),
+    getNewsByKeyword('基金 央行 货币政策', 6)
+  ]);
+  const indices    = indicesRes.status  === 'fulfilled' ? indicesRes.value  : [];
+  const hotSectors = sectorsRes.status  === 'fulfilled' ? sectorsRes.value  : [];
+  const liquor     = liquorRes.status   === 'fulfilled' ? liquorRes.value   : [];
+  const fundPolicy = fundRes.status     === 'fulfilled' ? fundRes.value     : [];
+  const aiSummary  = await getDeepSeekSummary(indices, hotSectors, liquor, fundPolicy);
+  return { indices, aiSummary, hotSectors, liquor, fundPolicy };
+}
+
+async function getIndices() {
+  const list = [
+    { secid: '1.000001', name: '上证指数', code: '000001' },
+    { secid: '0.399001', name: '深证成指', code: '399001' },
+    { secid: '0.399006', name: '创业板指', code: '399006' },
+    { secid: '1.000300', name: '沪深300',  code: '000300' }
   ];
+  const res = await httpGet(
+    'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=' + list.map(i => i.secid).join(',') +
+    '&fields=f2,f3,f4,f12,f14&fltt=2&ut=bd1d9ddb04089700cf9c27f6f7426281', {}, 5000);
+  const data = await res.json();
+  const diff = (data && data.data && data.data.diff) ? data.data.diff : [];
+  return diff.map(function(item) {
+    const info = list.find(i => i.code === item.f12) || {};
+    const pct = parseFloat(item.f3) || 0;
+    return { name: info.name || item.f14, price: item.f2, change: (parseFloat(item.f4) || 0).toFixed(2), changePct: pct.toFixed(2), isUp: pct >= 0 };
+  });
+}
 
-  var results = [];
+async function getNewsByKeyword(keyword, size) {
+  const res = await httpGet(
+    'https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&client=web&biz=web_news_search&keyword=' +
+    encodeURIComponent(keyword) + '&pageSize=' + size + '&pageIndex=1&_=' + Date.now(), {}, 6000);
+  const data = await res.json();
+  const list = (data && data.data && data.data.list) ? data.data.list : [];
+  return list.map(function(item) {
+    return { title: item.title, description: item.digest || '', source: item.mediaName || '东方财富', time: item.publishTime ? formatDate(item.publishTime) : getNow(), url: item.url || 'https://finance.eastmoney.com' };
+  });
+}
 
+async function getDeepSeekSummary(indices, hotSectors, liquor, fundPolicy) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return '';
+  const idxText = indices.length > 0
+    ? indices.map(i => i.name + ' ' + i.price + ' ' + (i.isUp ? '涨' : '跌') + i.changePct + '%').join('、')
+    : '指数数据暂无';
+  const news = [...hotSectors.slice(0, 2), ...liquor.slice(0, 2), ...fundPolicy.slice(0, 2)];
+  const newsText = news.length > 0 ? news.map(n => '• ' + n.title).join('\n') : '暂无新闻';
+  const prompt = '今日A股：' + idxText + '\n今日要闻：\n' + newsText +
+    '\n\n用3句大白话总结：①大盘今天怎么样 ②白酒板块需要注意什么 ③普通投资者今天该做什么。不用专业术语，说人话，100字以内。';
   try {
-    var secids = stocks.map(function(s) { return s.secid; }).join(',');
-    var res = await httpGet(
-      'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=' + secids +
-      '&fields=f2,f3,f4,f14,f15,f16,f17&fltt=2&ut=bd1d9ddb04089700cf9c27f6f7426281',
-      {}, 5000);
-    var data = await res.json();
-    var diff = (data && data.data && data.data.diff) ? data.data.diff : [];
-    for (var i = 0; i < diff.length; i++) {
-      var s = diff[i];
-      var stock = stocks[i];
-      var price = s.f2 || '-';
-      var pct = s.f3 || 0;
-      var change = s.f4 || 0;
-      var sign = pct >= 0 ? '+' : '';
-      results.push({
-        title: stock.name + '  ' + price + ' 元',
-        description: '涨跌: ' + sign + change + ' (' + sign + pct + '%)  今开: ' + s.f17 + '  最高: ' + s.f15 + '  最低: ' + s.f16,
-        source: '东方财富',
-        time: getNow(),
-        url: 'https://quote.eastmoney.com/' + stock.code + '.html',
-        stockInfo: price + ' ' + sign + pct + '%'
-      });
-    }
-  } catch (e) {
-    console.error('东方财富股价: ' + e.message);
-  }
-
-  try {
-    var newsRes = await httpGet(
-      'https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&client=web&biz=web_news_search&keyword=%E7%99%BD%E9%85%92&pageSize=5&pageIndex=1&_=' + Date.now(),
-      {}, 5000);
-    var newsData = await newsRes.json();
-    var list = (newsData && newsData.data && newsData.data.list) ? newsData.data.list : [];
-    for (var j = 0; j < Math.min(list.length, 4); j++) {
-      var item = list[j];
-      results.push({
-        title: item.title,
-        description: item.digest || '点击查看详情',
-        source: item.mediaName || '东方财富',
-        time: item.publishTime ? formatDate(item.publishTime) : getNow(),
-        url: item.url || 'https://finance.eastmoney.com'
-      });
-    }
-  } catch (e) {
-    console.error('东方财富新闻: ' + e.message);
-  }
-
-  if (results.length === 0) {
-    results.push({
-      title: '交易时段外暂无实时行情',
-      description: 'A股交易时间：周一至周五 9:30-11:30 / 13:00-15:00',
-      source: '系统提示',
-      time: getNow(),
-      url: 'https://finance.eastmoney.com/special/cywjh/'
-    });
-  }
-
-  return results;
+    const res = await httpGet('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: '你是用大白话讲股市的朋友，回答100字以内，不用专业术语。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.5, max_tokens: 200
+      })
+    }, 8000);
+    const data = await res.json();
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  } catch (e) { console.error('DeepSeek: ' + e.message); return ''; }
 }
