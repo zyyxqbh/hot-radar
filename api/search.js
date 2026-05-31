@@ -129,38 +129,49 @@ async function getAINews() {
 }
 
 async function getSocietyNews() {
-  var sources = [
-    { url: 'https://rsshub.app/weibo/search/hot', name: '微博热搜' },
-    { url: 'https://rsshub.app/zhihu/hot',        name: '知乎热榜' },
-    { url: 'https://rsshub.app/baidu/hot/general', name: '百度热搜' }
+  // 多个 RSSHub 镜像，逐个尝试
+  var rssHubHosts = [
+    'https://rsshub.rssforever.com',
+    'https://rss.shab.fun',
+    'https://hub.slarker.me',
+    'https://rsshub.ktachibana.party',
+    'https://rsshub.app'
   ];
 
-  for (var i = 0; i < sources.length; i++) {
-    var src = sources[i];
-    try {
-      var res = await httpGet(src.url, {}, 8000);
-      if (!res.ok) continue;
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (items.length === 0) continue;
-      return items.slice(0, 10).map(function(item, idx) {
-        return {
-          title: '#' + (idx + 1) + ' ' + item.title,
-          description: item.description || '点击查看详情',
-          source: src.name,
-          time: formatDate(item.pubDate) || getNow(),
-          url: item.url,
-          rank: idx + 1
-        };
-      });
-    } catch (e) {
-      console.error('民生 ' + src.name + ': ' + e.message);
+  var paths = [
+    { path: '/weibo/search/hot', name: '微博热搜' },
+    { path: '/zhihu/hot',        name: '知乎热榜' }
+  ];
+
+  for (var h = 0; h < rssHubHosts.length; h++) {
+    for (var p = 0; p < paths.length; p++) {
+      var url = rssHubHosts[h] + paths[p].path;
+      var name = paths[p].name;
+      try {
+        var res = await httpGet(url, {}, 5000);
+        if (!res.ok) continue;
+        var xml = await res.text();
+        var items = parseRSS(xml);
+        if (items.length === 0) continue;
+        console.log('民生成功: ' + url);
+        return items.slice(0, 10).map(function(item, idx) {
+          return {
+            title: '#' + (idx + 1) + ' ' + item.title,
+            description: item.description || '点击查看详情',
+            source: name,
+            time: formatDate(item.pubDate) || getNow(),
+            url: item.url,
+            rank: idx + 1
+          };
+        });
+      } catch (e) {
+        console.error(url + ' 失败: ' + e.message);
+      }
     }
   }
 
   return [];
 }
-
 async function getLiquorNews() {
   var stocks = [
     { code: 'sh600519', name: '贵州茅台' },
