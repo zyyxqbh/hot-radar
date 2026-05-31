@@ -1,236 +1,261 @@
 import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
-  // CORS 头
-  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  const [ai, society, liquor] = await Promise.allSettled([
+    getAINews(),
+    getSocietyNews(),
+    getLiquorNews()
+  ]);
 
-  try {
-    const results = {
-      ai: await getAINews(),
-      society: await getSocietyNews(),
-      liquor: await getLiquorNews(),
-      updateTime: new Date().toLocaleString('zh-CN', { 
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).replace(/\//g, '-')
-    };
-
-    res.status(200).json(results);
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ 
-      error: '获取热点失败',
-      message: error.message 
-    });
-  }
+  res.status(200).json({
+    ai:      ai.status      === 'fulfilled' ? ai.value      : [],
+    society: society.status === 'fulfilled' ? society.value : [],
+    liquor:  liquor.status  === 'fulfilled' ? liquor.value  : [],
+    updateTime: getNow()
+  });
 }
 
-// ==================== AI领域：保留 DeepSeek ====================
+// ─── 工具函数 ────────────────────────────────────────────────
+
+function getNow() {
+  return new Date().toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).replace(/\//g, '-');
+}
+
+function formatDate(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return getNow();
+    return d.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).replace(/\//g, '-');
+  } catch { return getNow(); }
+}
+
+function parseRSS(xml) {
+  const items = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = itemRe.exec(xml)) !== null) {
+    const c = m[1];
+    const get = (tag) => {
+      const cd = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`).exec(c);
+      if (cd) return cd[1].trim();
+      const tx = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`).exec(c);
+      return tx ? tx[1].trim() : '';
+    };
+    const linkM = c.match(/<link>([^<\s]+)<\/link>/) ||
+                  c.match(/<link[^>]+href="([^"]+)"/) ||
+                  c.match(/<guid[^>]*>([^<]+)<\/guid>/);
+    const desc = get('description').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ').trim().substring(0, 120);
+    const item = {
+      title: get('title'),
+      description: desc,
+      pubDate: get('pubDate') || get('dc:date'),
+      url: linkM ? linkM[1].trim() : ''
+    };
+    if (item.title) items.push(item);
+  }
+  return items;
+}
+
+async function req(url, opts = {}, ms = 7000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HotRadar/4.0)', ...(opts.headers || {}) },
+      ...opts
+    });
+  } finally { clearTimeout(id); }
+}
+
+// ─── AI 科技：量子位 + IT之家（过滤 AI 关键词）───────────────
+
 async function getAINews() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('DEEPSEEK_API_KEY 未配置');
+  const AI_KEYWORDS = [
+    'AI', '人工智能', '大模型', 'GPT', 'OpenAI', 'Anthropic', 'Claude',
+    'Gemini', '文心', '通义', '智谱', '混元', 'DeepSeek', '机器学习',
+    'LLM', '神经网络', 'Sora', '多模态'
+  ];
+
+  const sources = [
+    { url: 'https://www.qbitai.com/feed',   name: '量子位',   filter: false },
+    { url: 'https://www.jiqizhixin.com/rss', name: '机器之心', filter: false },
+    { url: 'https://www.ithome.com/rss/',    name: 'IT之家',   filter: true  }
+  ];
+
+  const results = [];
+  for (const src of sources) {
+    try {
+      const res = await req(src.url, {}, 6000);
+      if (!res.ok) continue;
+      const xml = await res.text();
+      let items = parseRSS(xml);
+      if (src.filter) {
+        items = items.filter(i =>
+          AI_KEYWORDS.some(kw => i.title.includes(kw) || i.description.includes(kw))
+        );
+      }
+      results.push(...items.slice(0, 5).map(i => ({
+        title: i.title,
+        description: i.description || '点击查看详情',
+        source: src.name,
+        time: formatDate(i.pubDate),
+        url: i.url
+      })));
+    } catch (e) {
+      console.error(`AI RSS 失败 [${src.name}]:`, e.message);
+    }
   }
 
-  const prompt = `请提供最新的AI领域热点新闻（最近24小时内），每条包含：
-1. 标题
-2. 简述（50字以内）
-3. 来源网站
-4. 发布时间（格式：2024-05-18 14:32）
-5. 原文链接（必须是真实存在的URL）
+  // 去重
+  const seen = new Set();
+  return results.filter(i => {
+    if (seen.has(i.title)) return false;
+    seen.add(i.title);
+    return true;
+  }).slice(0, 8);
+}
 
-要求：
-- 提供5条新闻
-- 优先国内AI动态（百度、阿里、字节等）
-- 必须是最近24小时的消息
-- 时间必须精确到分钟
+// ─── 民生热点：vvhan 微博热搜（稳定） + 备用 ─────────────────
 
-请以JSON格式返回，格式：
-[
-  {
-    "title": "标题",
-    "description": "简述",
-    "source": "来源",
-    "time": "2024-05-18 14:32",
-    "url": "链接"
-  }
-]`;
-
-  const response = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: '你是一个专业的AI行业资讯助手，只返回JSON格式数据，不添加任何其他文字。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 2000
-    })
+async function getSocietyNews() {
+  const fmt = (item, i) => ({
+    title: `#${i + 1} ${item.title || item.name || ''}`,
+    description: item.desc || item.note || `热度: ${item.hot || item.hotNum || '热搜'}`,
+    source: '微博热搜',
+    time: getNow(),
+    url: item.url || item.mobilUrl || `https://s.weibo.com/weibo?q=${encodeURIComponent(item.title || item.name || '')}`,
+    rank: i + 1,
+    hot: item.hot || item.hotNum || 0
   });
 
-  if (!response.ok) {
-    throw new Error(`DeepSeek API 错误: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-  
-  // 提取 JSON（处理可能的 markdown 包裹）
-  const jsonMatch = content.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    throw new Error('DeepSeek 返回格式错误');
-  }
-  
-  return JSON.parse(jsonMatch[0]);
-}
-
-// ==================== 民生社会：微博热搜 ====================
-async function getSocietyNews() {
+  // 主：vvhan（最稳定）
   try {
-    // 使用免费的微博热搜API（GitHub开源项目）
-    const response = await fetch('https://weibo-hot-api.vercel.app/api');
-    
-    if (!response.ok) {
-      throw new Error('微博热搜API请求失败');
+    const res = await req('https://api.vvhan.com/api/hotlist/wbHot', {}, 6000);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data.data.slice(0, 10).map(fmt);
     }
+  } catch (e) { console.error('vvhan微博失败:', e.message); }
 
-    const data = await response.json();
-    
-    // 格式化为统一结构，取前8条
-    return data.data.slice(0, 8).map((item, index) => ({
-      title: `#${index + 1} ${item.title}`,
-      description: item.desc || `热度: ${item.hot || '未知'}`,
-      source: '微博热搜',
-      time: new Date().toLocaleString('zh-CN', {
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      }).replace(/\//g, '-'),
-      url: item.url || `https://s.weibo.com/weibo?q=${encodeURIComponent(item.title)}`,
-      rank: index + 1,
-      hot: item.hot || 0
-    }));
-  } catch (error) {
-    console.error('微博热搜获取失败:', error);
-    
-    // 备用方案：使用另一个热搜API
-    try {
-      const backupResponse = await fetch('https://api.vvhan.com/api/hotlist/wbHot');
-      const backupData = await backupResponse.json();
-      
-      if (backupData.success && backupData.data) {
-        return backupData.data.slice(0, 8).map((item, index) => ({
-          title: `#${index + 1} ${item.title}`,
-          description: `热度: ${item.hot || '未知'}`,
-          source: '微博热搜',
-          time: new Date().toLocaleString('zh-CN', {
-            timeZone: 'Asia/Shanghai',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          }).replace(/\//g, '-'),
-          url: item.url || item.mobilUrl,
-          rank: index + 1,
-          hot: item.hot || 0
-        }));
-      }
-    } catch (backupError) {
-      console.error('备用API也失败:', backupError);
+  // 备用1：weibo-hot-api
+  try {
+    const res = await req('https://weibo-hot-api.vercel.app/api', {}, 6000);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : data.data;
+    if (Array.isArray(list) && list.length > 0) return list.slice(0, 10).map(fmt);
+  } catch (e) { console.error('weibo-hot-api失败:', e.message); }
+
+  // 备用2：头条热搜（换个数据源总有一个能用）
+  try {
+    const res = await req('https://api.vvhan.com/api/hotlist/toutiaoHot', {}, 6000);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data.data.slice(0, 10).map((item, i) => ({
+        title: `#${i + 1} ${item.title}`,
+        description: item.desc || '今日热点',
+        source: '今日头条',
+        time: getNow(),
+        url: item.url || 'https://www.toutiao.com',
+        rank: i + 1,
+        hot: 0
+      }));
     }
-    
-    // 如果所有API都失败，返回空数组
-    return [];
-  }
+  } catch (e) { console.error('头条热搜失败:', e.message); }
+
+  return [];
 }
 
-// ==================== 白酒行业：新浪财经 + DeepSeek 补充 ====================
+// ─── 白酒行业：新浪实时股价（免费、极稳定）+ 东方财富新闻 ────
+
 async function getLiquorNews() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  
-  const prompt = `请提供白酒行业最新动态（最近24小时），包括：
-1. 白酒上市公司新闻（茅台、五粮液、泸州老窖等）
-2. 白酒股价动态（涨跌情况）
-3. 行业政策或市场消息
+  const stocks = [
+    { code: 'sh600519', name: '贵州茅台', emCode: '600519' },
+    { code: 'sz000858', name: '五粮液',   emCode: '000858' },
+    { code: 'sz000568', name: '泸州老窖', emCode: '000568' },
+    { code: 'sh600809', name: '山西汾酒', emCode: '600809' }
+  ];
 
-每条包含：
-- 标题
-- 简述（50字内）
-- 来源（新浪财经/东方财富/雪球等）
-- 时间（格式：2024-05-18 14:32）
-- 链接
+  const results = [];
 
-返回5-8条，JSON格式：
-[
-  {
-    "title": "标题",
-    "description": "简述",
-    "source": "来源",
-    "time": "2024-05-18 14:32",
-    "url": "链接",
-    "stockInfo": "股价信息（如有）"
-  }
-]`;
-
+  // 新浪实时股价（最稳定的免费股价 API）
+  const codes = stocks.map(s => s.code).join(',');
   try {
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: '你是白酒行业资讯专家，只返回JSON格式，不添加其他内容。优先提供股价和财经数据。' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000
-      })
-    });
+    const res = await req(`https://hq.sinajs.cn/list=${codes}`, {
+      headers: { 'Referer': 'https://finance.sina.com.cn' }
+    }, 5000);
+    const text = await res.text();
 
-    if (!response.ok) {
-      throw new Error('白酒资讯API错误');
+    // 解析新浪行情格式：var hq_str_sh600519="贵州茅台,昨收,今开,当前价,...";
+    for (const stock of stocks) {
+      const pattern = new RegExp(`hq_str_${stock.code}="([^"]+)"`);
+      const m = text.match(pattern);
+      if (!m || !m[1]) continue;
+      const fields = m[1].split(',');
+      // 字段顺序：名称,今开,昨收,当前价,最高,最低,...,时间,...
+      const [, open, prevClose, current, high, low] = fields;
+      if (!current || current === '0.000') continue;
+      const change = (parseFloat(current) - parseFloat(prevClose)).toFixed(2);
+      const changePct = ((parseFloat(change) / parseFloat(prevClose)) * 100).toFixed(2);
+      const sign = parseFloat(change) >= 0 ? '+' : '';
+      results.push({
+        title: `${stock.name}：${current} 元  ${sign}${changePct}%`,
+        description: `今开: ${open}  最高: ${high}  最低: ${low}  昨收: ${prevClose}`,
+        source: '新浪财经',
+        time: getNow(),
+        url: `https://finance.sina.com.cn/realstock/company/${stock.code}/nc.shtml`,
+        stockInfo: `${current} ${sign}${changePct}%`
+      });
     }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    
-    return [];
-  } catch (error) {
-    console.error('白酒资讯获取失败:', error);
-    return [];
+  } catch (e) {
+    console.error('新浪股价失败:', e.message);
   }
+
+  // 东方财富白酒板块新闻
+  try {
+    const res = await req(
+      'https://np-listapi.eastmoney.com/comm/web/getListInfo?' +
+      'type=1&client=web&biz=web_news_search&keyword=%E7%99%BD%E9%85%92' +
+      '&pageSize=6&pageIndex=1&_=' + Date.now(),
+      {}, 6000
+    );
+    const data = await res.json();
+    const list = data?.data?.list || data?.list || [];
+    for (const item of list.slice(0, 4)) {
+      results.push({
+        title: item.title || item.Title,
+        description: item.digest || item.Digest || '点击查看详情',
+        source: item.mediaName || '东方财富',
+        time: item.publishTime ? formatDate(item.publishTime) : getNow(),
+        url: item.url || item.Url || 'https://finance.eastmoney.com'
+      });
+    }
+  } catch (e) {
+    console.error('东方财富新闻失败:', e.message);
+  }
+
+  if (results.length === 0) {
+    results.push({
+      title: '交易时段外暂无实时行情',
+      description: 'A股交易时间：周一至周五 9:30-11:30 / 13:00-15:00',
+      source: '系统提示',
+      time: getNow(),
+      url: 'https://finance.eastmoney.com/special/cywjh/'
+    });
+  }
+
+  return results;
 }
