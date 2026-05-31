@@ -107,15 +107,41 @@ async function getAINews() {
 }
 
 async function getSocietyNews() {
-  const fmt = (item, i, source) => ({
-    title: `#${i + 1} ${item.title || item.name || ''}`,
-    description: item.desc || item.note || `热度: ${item.hot || item.hotNum || '热搜'}`,
-    source: source,
-    time: getNow(),
-    url: item.url || item.mobilUrl || `https://s.weibo.com/weibo?q=${encodeURIComponent(item.title || item.name || '')}`,
-    rank: i + 1,
-    hot: item.hot || item.hotNum || 0
-  });
+  // RSSHub 提供微博/知乎热榜，全球可访问，不需要中国IP
+  const sources = [
+    {
+      url: 'https://rsshub.app/weibo/search/hot',
+      name: '微博热搜'
+    },
+    {
+      url: 'https://rsshub.app/zhihu/hot',
+      name: '知乎热榜'
+    }
+  ];
+
+  for (const src of sources) {
+    try {
+      const res = await req(src.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      }, 8000);
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const items = parseRSS(xml);
+      if (items.length > 0) {
+        return items.slice(0, 10).map((item, i) => ({
+          title: `#${i + 1} ${item.title}`,
+          description: item.description || '点击查看详情',
+          source: src.name,
+          time: formatDate(item.pubDate) || getNow(),
+          url: item.url,
+          rank: i + 1
+        }));
+      }
+    } catch (e) { console.error(`RSSHub [${src.name}] 失败:`, e.message); }
+  }
+
+  return [];
+}
 
   // 主：vvhan 微博热搜
   try {
