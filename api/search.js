@@ -132,25 +132,22 @@ async function getSocietyNews() {
     }
   } catch (e) { console.error('知乎热榜失败:', e.message); }
 
-  // 备用：百度实时热搜
+  // 备用：今日头条热榜
   try {
-    const res = await req('https://top.baidu.com/board?tab=realtime',
-      { headers: { 'Accept-Language': 'zh-CN,zh;q=0.9' } }, 6000);
-    const html = await res.text();
-    const match = html.match(/"hotsearch":\[([\s\S]*?)\],"tabsInfo"/);
-    if (match) {
-      const items = JSON.parse(`[${match[1]}]`);
-      return items.slice(0, 10).map((item, i) => ({
-        title: `#${i + 1} ${item.word || ''}`,
-        description: item.content?.[0]?.title || '百度热搜',
-        source: '百度热搜',
+    const res = await req('https://api.vvhan.com/api/hotlist/toutiaoHot', {}, 5000);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data.data.slice(0, 10).map((item, i) => ({
+        title: `#${i + 1} ${item.title || item.name}`,
+        description: item.desc || '今日头条热点',
+        source: '今日头条',
         time: getNow(),
-        url: `https://www.baidu.com/s?wd=${encodeURIComponent(item.word || '')}`,
+        url: item.url || 'https://www.toutiao.com',
         rank: i + 1,
-        hot: item.hotScore || 0
+        hot: item.hot || 0
       }));
     }
-  } catch (e) { console.error('百度热搜失败:', e.message); }
+  } catch (e) { console.error('今日头条失败:', e.message); }
 
   // 备用2：vvhan 微博
   try {
