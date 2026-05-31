@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>热点雷达</title>
+   .source-section { margin-bottom: 28px; }
+   .source-header { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #c0392b; display: flex; align-items: center; justify-content: space-between; }
+   .source-status { font-size: 12px; color: #aaa; font-weight: normal; }
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; }
@@ -162,6 +165,28 @@ function renderBasicPanel(panelId, items) {
   panel.innerHTML = '<div class="cards">' + items.map(buildCard).join('') + '</div>';
 }
 
+function renderSociety(data) {
+  const panel = document.getElementById('panel-society');
+  if (!data) { panel.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+  const sections = [
+    { key: 'weibo',    label: '微博热搜', icon: '🔥' },
+    { key: 'bilibili', label: 'B站热搜',  icon: '📺' },
+    { key: 'thepaper', label: '澎湃新闻', icon: '📰' }
+  ];
+  let html = '';
+  sections.forEach(function(sec) {
+    const items = data[sec.key] || [];
+    html += '<div class="source-section">';
+    html += '<div class="source-header">' + sec.icon + ' ' + sec.label +
+            '<span class="source-status">' + (items.length > 0 ? items.length + ' 条' : '暂不可用') + '</span></div>';
+    html += items.length > 0
+      ? '<div class="cards">' + items.map(buildCard).join('') + '</div>'
+      : '<div class="empty" style="padding:16px 0;font-size:13px;">获取失败，刷新重试</div>';
+    html += '</div>';
+  });
+  panel.innerHTML = html;
+}
+  
 function renderInvestment(data) {
   const panel = document.getElementById('panel-investment');
 
@@ -219,7 +244,7 @@ async function loadData() {
     const res = await fetch('/api/search');
     const data = await res.json();
     renderBasicPanel('ai', data.ai);
-    renderBasicPanel('society', data.society);
+    renderSociety(data.society);
     renderInvestment(data.investment || {});
     if (data.updateTime) {
       document.getElementById('updateTime').textContent = '更新于 ' + data.updateTime;
