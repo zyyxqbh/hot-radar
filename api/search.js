@@ -14,7 +14,7 @@ export default async function handler(req, res) {
 
   res.status(200).json({
     ai:         ai.status         === 'fulfilled' ? ai.value         : [],
-    society:    society.status    === 'fulfilled' ? society.value    : [],
+   society: society.status === 'fulfilled' ? society.value : { weibo: [], bilibili: [], thepaper: [] },
     investment: investment.status === 'fulfilled' ? investment.value : { indices: [], aiSummary: '', hotSectors: [], liquor: [], fundPolicy: [] },
     updateTime: getNow()
   });
@@ -103,37 +103,77 @@ async function getAINews() {
 // ── 民生热点 ──────────────────────────────────────────────────
 
 async function getSocietyNews() {
-  const attempts = [
-    { url: 'https://rsshub.rssforever.com/weibo/search/hot', name: '微博热搜' },
-    { url: 'https://rsshub.rssforever.com/zhihu/hot',        name: '知乎热榜' },
-    { url: 'https://rss.shab.fun/weibo/search/hot',          name: '微博热搜' },
-    { url: 'https://rss.shab.fun/zhihu/hot',                 name: '知乎热榜' },
-    { url: 'https://hub.slarker.me/weibo/search/hot',        name: '微博热搜' },
-    { url: 'https://rsshub.rssforever.com/bilibili/hot-search', name: 'B站热搜' },
-    { url: 'https://rsshub.app/weibo/search/hot',            name: '微博热搜' },
-    { url: 'https://rsshub.app/zhihu/hot',                   name: '知乎热榜' }
+  const [weiboRes, biliRes, paperRes] = await Promise.allSettled([
+    getWeiboHot(),
+    getBilibiliHot(),
+    getThepaperNews()
+  ]);
+  return {
+    weibo:    weiboRes.status === 'fulfilled' ? weiboRes.value : [],
+    bilibili: biliRes.status  === 'fulfilled' ? biliRes.value  : [],
+    thepaper: paperRes.status === 'fulfilled' ? paperRes.value : []
+  };
+}
+
+async function getWeiboHot() {
+  const mirrors = [
+    'https://rsshub.rssforever.com/weibo/search/hot',
+    'https://rss.shab.fun/weibo/search/hot',
+    'https://hub.slarker.me/weibo/search/hot',
+    'https://rsshub.app/weibo/search/hot'
   ];
-  for (const a of attempts) {
+  for (const url of mirrors) {
     try {
-      const res = await httpGet(a.url, {}, 4000);
+      const res = await httpGet(url, {}, 4000);
       if (!res.ok) continue;
       const xml = await res.text();
       const items = parseRSS(xml);
       if (items.length === 0) continue;
-      console.log('民生成功: ' + a.url);
-      return items.slice(0, 10).map((item, idx) => ({
-        title: '#' + (idx + 1) + ' ' + item.title,
-        description: item.description || '点击查看详情',
-        source: a.name,
-        time: formatDate(item.pubDate) || getNow(),
-        url: item.url,
-        rank: idx + 1
-      }));
-    } catch (e) { console.error('民生失败 ' + a.url + ': ' + e.message); }
+      console.log('微博成功: ' + url);
+      return items.slice(0, 10).map(function(item, i) {
+        return { title: '#' + (i+1) + ' ' + item.title, description: item.description || '点击查看', source: '微博热搜', time: formatDate(item.pubDate) || getNow(), url: item.url, rank: i+1 };
+      });
+    } catch (e) { console.error('微博失败 ' + url + ': ' + e.message); }
   }
   return [];
 }
 
+async function getBilibiliHot() {
+  try {
+    const res = await httpGet(
+      'https://api.bilibili.com/x/web-interface/search/square?limit=10',
+      { headers: { 'Referer': 'https://www.bilibili.com' } }, 5000
+    );
+    const data = await res.json();
+    const list = (data && data.data && data.data.trending && data.data.trending.list) ? data.data.trending.list : [];
+    if (list.length === 0) throw new Error('数据为空');
+    return list.slice(0, 10).map(function(item, i) {
+      return { title: '#' + (i+1) + ' ' + (item.keyword || item.show_name), description: item.show_name || '点击查看', source: 'B站热搜', time: getNow(), url: 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(item.keyword || ''), rank: i+1 };
+    });
+  } catch (e) { console.error('B站失败: ' + e.message); return []; }
+}
+
+async function getThepaperNews() {
+  const urls = [
+    'https://www.thepaper.cn/rss.php',
+    'https://rsshub.rssforever.com/thepaper/featured',
+    'https://rsshub.app/thepaper/featured'
+  ];
+  for (const url of urls) {
+    try {
+      const res = await httpGet(url, {}, 5000);
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const items = parseRSS(xml);
+      if (items.length === 0) continue;
+      console.log('澎湃成功: ' + url);
+      return items.slice(0, 8).map(function(item) {
+        return { title: item.title, description: item.description || '点击查看详情', source: '澎湃新闻', time: formatDate(item.pubDate) || getNow(), url: item.url };
+      });
+    } catch (e) { console.error('澎湃失败 ' + url + ': ' + e.message); }
+  }
+  return [];
+}
 // ── 投资参考 ──────────────────────────────────────────────────
 
 async function getInvestmentData() {
