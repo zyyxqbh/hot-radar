@@ -20,6 +20,8 @@ export default async function handler(req, res) {
   });
 }
 
+// ── 工具函数 ──────────────────────────────────────────────────
+
 function getNow() {
   return new Date().toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -28,9 +30,9 @@ function getNow() {
   }).replace(/\//g, '-');
 }
 
-function formatDate(dateStr) {
+function formatDate(str) {
   try {
-    const d = new Date(dateStr);
+    const d = new Date(str);
     if (isNaN(d.getTime())) return getNow();
     return d.toLocaleString('zh-CN', {
       timeZone: 'Asia/Shanghai',
@@ -42,9 +44,9 @@ function formatDate(dateStr) {
 
 function parseRSS(xml) {
   const items = [];
-  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  const re = /<item>([\s\S]*?)<\/item>/g;
   let m;
-  while ((m = itemRe.exec(xml)) !== null) {
+  while ((m = re.exec(xml)) !== null) {
     const c = m[1];
     const get = (tag) => {
       const cd = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`).exec(c);
@@ -52,17 +54,17 @@ function parseRSS(xml) {
       const tx = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`).exec(c);
       return tx ? tx[1].trim() : '';
     };
-    const linkM = c.match(/<link>([^<\s]+)<\/link>/) ||
-                  c.match(/<link[^>]+href="([^"]+)"/) ||
-                  c.match(/<guid[^>]*>([^<]+)<\/guid>/);
+    const lm = c.match(/<link>([^<\s]+)<\/link>/) ||
+               c.match(/<link[^>]+href="([^"]+)"/) ||
+               c.match(/<guid[^>]*>([^<]+)<\/guid>/);
     const desc = get('description').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ').trim().substring(0, 120);
-    const item = { title: get('title'), description: desc, pubDate: get('pubDate') || get('dc:date'), url: linkM ? linkM[1].trim() : '' };
+    const item = { title: get('title'), description: desc, pubDate: get('pubDate') || get('dc:date'), url: lm ? lm[1].trim() : '' };
     if (item.title) items.push(item);
   }
   return items;
 }
 
-async function req(url, opts = {}, ms = 7000) {
+async function get(url, opts = {}, ms = 8000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -74,24 +76,26 @@ async function req(url, opts = {}, ms = 7000) {
   } finally { clearTimeout(id); }
 }
 
+// ── AI 科技：量子位 + 机器之心 + IT之家 RSS ───────────────────
+
 async function getAINews() {
-  const AI_KW = ['AI', '人工智能', '大模型', 'GPT', 'OpenAI', 'Anthropic', 'Claude',
-    'Gemini', '文心', '通义', '智谱', '混元', 'DeepSeek', 'LLM', 'Sora', '多模态'];
+  const KW = ['AI', '人工智能', '大模型', 'GPT', 'OpenAI', 'Anthropic', 'Claude',
+    'Gemini', '文心', '通义', '智谱', 'DeepSeek', 'LLM', 'Sora', '多模态'];
 
   const sources = [
-    { url: 'https://www.qbitai.com/feed',   name: '量子位',   filter: false },
-    { url: 'https://www.jiqizhixin.com/rss', name: '机器之心', filter: false },
-    { url: 'https://www.ithome.com/rss/',    name: 'IT之家',   filter: true  }
+    { url: 'https://www.qbitai.com/feed',    name: '量子位',   filter: false },
+    { url: 'https://www.jiqizhixin.com/rss',  name: '机器之心', filter: false },
+    { url: 'https://www.ithome.com/rss/',     name: 'IT之家',   filter: true  }
   ];
 
   const results = [];
   for (const src of sources) {
     try {
-      const res = await req(src.url, {}, 6000);
+      const res = await get(src.url, {}, 6000);
       if (!res.ok) continue;
       const xml = await res.text();
       let items = parseRSS(xml);
-      if (src.filter) items = items.filter(i => AI_KW.some(kw => i.title.includes(kw) || i.description.includes(kw)));
+      if (src.filter) items = items.filter(i => KW.some(k => i.title.includes(k) || i.description.includes(k)));
       results.push(...items.slice(0, 5).map(i => ({
         title: i.title,
         description: i.description || '点击查看详情',
@@ -99,84 +103,49 @@ async function getAINews() {
         time: formatDate(i.pubDate),
         url: i.url
       })));
-    } catch (e) { console.error(`AI RSS [${src.name}]:`, e.message); }
+    } catch (e) { console.error(`AI[${src.name}]:`, e.message); }
   }
 
   const seen = new Set();
   return results.filter(i => { if (seen.has(i.title)) return false; seen.add(i.title); return true; }).slice(0, 8);
 }
 
+// ── 民生热点：RSSHub（全球可访问）────────────────────────────
+
 async function getSocietyNews() {
-  // RSSHub 提供微博/知乎热榜，全球可访问，不需要中国IP
   const sources = [
-    {
-      url: 'https://rsshub.app/weibo/search/hot',
-      name: '微博热搜'
-    },
-    {
-      url: 'https://rsshub.app/zhihu/hot',
-      name: '知乎热榜'
-    }
+    { url: 'https://rsshub.app/weibo/search/hot', name: '微博热搜' },
+    { url: 'https://rsshub.app/zhihu/hot',        name: '知乎热榜' },
+    { url: 'https://rsshub.app/baidu/hot/general', name: '百度热搜' }
   ];
 
   for (const src of sources) {
     try {
-      const res = await req(src.url, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      }, 8000);
+      const res = await get(src.url, {}, 8000);
       if (!res.ok) continue;
       const xml = await res.text();
       const items = parseRSS(xml);
-      if (items.length > 0) {
-        return items.slice(0, 10).map((item, i) => ({
-          title: `#${i + 1} ${item.title}`,
-          description: item.description || '点击查看详情',
-          source: src.name,
-          time: formatDate(item.pubDate) || getNow(),
-          url: item.url,
-          rank: i + 1
-        }));
-      }
-    } catch (e) { console.error(`RSSHub [${src.name}] 失败:`, e.message); }
+      if (items.length === 0) continue;
+      return items.slice(0, 10).map((item, i) => ({
+        title: `#${i + 1} ${item.title}`,
+        description: item.description || '点击查看详情',
+        source: src.name,
+        time: formatDate(item.pubDate) || getNow(),
+        url: item.url,
+        rank: i + 1
+      }));
+    } catch (e) { console.error(`民生[${src.name}]:`, e.message); }
   }
 
   return [];
 }
 
-  // 主：vvhan 微博热搜
-  try {
-    const res = await req('https://api.vvhan.com/api/hotlist/wbHot', {}, 6000);
-    const data = await res.json();
-    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-      return data.data.slice(0, 10).map((item, i) => fmt(item, i, '微博热搜'));
-    }
-  } catch (e) { console.error('vvhan微博失败:', e.message); }
-
-  // 备用1：今日头条
-  try {
-    const res = await req('https://api.vvhan.com/api/hotlist/toutiaoHot', {}, 6000);
-    const data = await res.json();
-    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-      return data.data.slice(0, 10).map((item, i) => fmt(item, i, '今日头条'));
-    }
-  } catch (e) { console.error('头条失败:', e.message); }
-
-  // 备用2：B站热搜
-  try {
-    const res = await req('https://api.vvhan.com/api/hotlist/bili', {}, 6000);
-    const data = await res.json();
-    if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-      return data.data.slice(0, 10).map((item, i) => fmt(item, i, 'B站热搜'));
-    }
-  } catch (e) { console.error('B站失败:', e.message); }
-
-  return [];
-}
+// ── 白酒行业：新浪实时股价 + 东方财富新闻 ───────────────────
 
 async function getLiquorNews() {
   const stocks = [
     { code: 'sh600519', name: '贵州茅台' },
-    { code: 'sz000858', name: '五粮液' },
+    { code: 'sz000858', name: '五粮液'   },
     { code: 'sz000568', name: '泸州老窖' },
     { code: 'sh600809', name: '山西汾酒' }
   ];
@@ -185,7 +154,7 @@ async function getLiquorNews() {
 
   try {
     const codes = stocks.map(s => s.code).join(',');
-    const res = await req(`https://hq.sinajs.cn/list=${codes}`,
+    const res = await get(`https://hq.sinajs.cn/list=${codes}`,
       { headers: { 'Referer': 'https://finance.sina.com.cn' } }, 5000);
     const text = await res.text();
     for (const stock of stocks) {
@@ -206,10 +175,10 @@ async function getLiquorNews() {
         stockInfo: `${current} ${sign}${pct}%`
       });
     }
-  } catch (e) { console.error('新浪股价失败:', e.message); }
+  } catch (e) { console.error('新浪股价:', e.message); }
 
   try {
-    const res = await req(
+    const res = await get(
       `https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&client=web&biz=web_news_search&keyword=%E7%99%BD%E9%85%92&pageSize=5&pageIndex=1&_=${Date.now()}`,
       {}, 6000);
     const data = await res.json();
@@ -222,7 +191,7 @@ async function getLiquorNews() {
         url: item.url || 'https://finance.eastmoney.com'
       });
     }
-  } catch (e) { console.error('东方财富新闻失败:', e.message); }
+  } catch (e) { console.error('东方财富:', e.message); }
 
   if (results.length === 0) {
     results.push({
