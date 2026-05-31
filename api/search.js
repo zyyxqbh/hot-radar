@@ -129,94 +129,93 @@ async function getAINews() {
 }
 
 async function getSocietyNews() {
-  // 多个 RSSHub 镜像，逐个尝试
-  var rssHubHosts = [
-    'https://rsshub.rssforever.com',
-    'https://rss.shab.fun',
-    'https://hub.slarker.me',
-    'https://rsshub.ktachibana.party',
-    'https://rsshub.app'
+  var attempts = [
+    'https://rsshub.rssforever.com/weibo/search/hot',
+    'https://rsshub.rssforever.com/zhihu/hot',
+    'https://rss.shab.fun/weibo/search/hot',
+    'https://rss.shab.fun/zhihu/hot',
+    'https://hub.slarker.me/weibo/search/hot',
+    'https://hub.slarker.me/zhihu/hot',
+    'https://rsshub.app/weibo/search/hot',
+    'https://rsshub.app/zhihu/hot'
   ];
 
-  var paths = [
-    { path: '/weibo/search/hot', name: '微博热搜' },
-    { path: '/zhihu/hot',        name: '知乎热榜' }
-  ];
+  var names = {
+    'weibo': '微博热搜',
+    'zhihu': '知乎热榜'
+  };
 
-  for (var h = 0; h < rssHubHosts.length; h++) {
-    for (var p = 0; p < paths.length; p++) {
-      var url = rssHubHosts[h] + paths[p].path;
-      var name = paths[p].name;
-      try {
-        var res = await httpGet(url, {}, 5000);
-        if (!res.ok) continue;
-        var xml = await res.text();
-        var items = parseRSS(xml);
-        if (items.length === 0) continue;
-        console.log('民生成功: ' + url);
-        return items.slice(0, 10).map(function(item, idx) {
-          return {
-            title: '#' + (idx + 1) + ' ' + item.title,
-            description: item.description || '点击查看详情',
-            source: name,
-            time: formatDate(item.pubDate) || getNow(),
-            url: item.url,
-            rank: idx + 1
-          };
-        });
-      } catch (e) {
-        console.error(url + ' 失败: ' + e.message);
-      }
+  for (var i = 0; i < attempts.length; i++) {
+    var url = attempts[i];
+    var name = url.includes('weibo') ? '微博热搜' : '知乎热榜';
+    try {
+      console.log('尝试: ' + url);
+      var res = await httpGet(url, {}, 4000);
+      if (!res.ok) { console.log('状态码失败: ' + res.status); continue; }
+      var xml = await res.text();
+      var items = parseRSS(xml);
+      if (items.length === 0) { console.log('解析结果为空'); continue; }
+      console.log('民生成功: ' + url + ' (' + items.length + '条)');
+      return items.slice(0, 10).map(function(item, idx) {
+        return {
+          title: '#' + (idx + 1) + ' ' + item.title,
+          description: item.description || '点击查看详情',
+          source: name,
+          time: formatDate(item.pubDate) || getNow(),
+          url: item.url,
+          rank: idx + 1
+        };
+      });
+    } catch (e) {
+      console.error('失败 ' + url + ': ' + e.message);
     }
   }
-
   return [];
 }
 async function getLiquorNews() {
   var stocks = [
-    { code: 'sh600519', name: '贵州茅台' },
-    { code: 'sz000858', name: '五粮液'   },
-    { code: 'sz000568', name: '泸州老窖' },
-    { code: 'sh600809', name: '山西汾酒' }
+    { secid: '1.600519', name: '贵州茅台', code: 'sh600519' },
+    { secid: '0.000858', name: '五粮液',   code: 'sz000858' },
+    { secid: '0.000568', name: '泸州老窖', code: 'sz000568' },
+    { secid: '1.600809', name: '山西汾酒', code: 'sh600809' }
   ];
 
   var results = [];
 
   try {
-    var codes = stocks.map(function(s) { return s.code; }).join(',');
-    var res = await httpGet('https://hq.sinajs.cn/list=' + codes,
-      { headers: { 'Referer': 'https://finance.sina.com.cn' } }, 5000);
-    var text = await res.text();
-    for (var i = 0; i < stocks.length; i++) {
+    var secids = stocks.map(function(s) { return s.secid; }).join(',');
+    var res = await httpGet(
+      'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=' + secids +
+      '&fields=f2,f3,f4,f14,f15,f16,f17&fltt=2&ut=bd1d9ddb04089700cf9c27f6f7426281',
+      {}, 5000);
+    var data = await res.json();
+    var diff = (data && data.data && data.data.diff) ? data.data.diff : [];
+    for (var i = 0; i < diff.length; i++) {
+      var s = diff[i];
       var stock = stocks[i];
-      var pattern = new RegExp('hq_str_' + stock.code + '="([^"]+)"');
-      var m = text.match(pattern);
-      if (!m || !m[1]) continue;
-      var f = m[1].split(',');
-      var open = f[1], prevClose = f[2], current = f[3], high = f[4], low = f[5];
-      if (!current || current === '0.000') continue;
-      var change = (parseFloat(current) - parseFloat(prevClose)).toFixed(2);
-      var pct = ((parseFloat(change) / parseFloat(prevClose)) * 100).toFixed(2);
-      var sign = parseFloat(change) >= 0 ? '+' : '';
+      var price = s.f2 || '-';
+      var pct = s.f3 || 0;
+      var change = s.f4 || 0;
+      var sign = pct >= 0 ? '+' : '';
       results.push({
-        title: stock.name + '  ' + current + ' 元',
-        description: '涨跌: ' + sign + change + ' (' + sign + pct + '%)  今开: ' + open + '  最高: ' + high + '  最低: ' + low,
-        source: '新浪财经',
+        title: stock.name + '  ' + price + ' 元',
+        description: '涨跌: ' + sign + change + ' (' + sign + pct + '%)  今开: ' + s.f17 + '  最高: ' + s.f15 + '  最低: ' + s.f16,
+        source: '东方财富',
         time: getNow(),
-        url: 'https://finance.sina.com.cn/realstock/company/' + stock.code + '/nc.shtml',
-        stockInfo: current + ' ' + sign + pct + '%'
+        url: 'https://quote.eastmoney.com/' + stock.code + '.html',
+        stockInfo: price + ' ' + sign + pct + '%'
       });
     }
   } catch (e) {
-    console.error('新浪股价: ' + e.message);
+    console.error('东方财富股价: ' + e.message);
   }
 
   try {
     var newsRes = await httpGet(
       'https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&client=web&biz=web_news_search&keyword=%E7%99%BD%E9%85%92&pageSize=5&pageIndex=1&_=' + Date.now(),
-      {}, 6000);
-    var data = await newsRes.json();
-    var list = (data && data.data && data.data.list) ? data.data.list : [];
+      {}, 5000);
+    var newsData = await newsRes.json();
+    var list = (newsData && newsData.data && newsData.data.list) ? newsData.data.list : [];
     for (var j = 0; j < Math.min(list.length, 4); j++) {
       var item = list[j];
       results.push({
@@ -228,7 +227,7 @@ async function getLiquorNews() {
       });
     }
   } catch (e) {
-    console.error('东方财富: ' + e.message);
+    console.error('东方财富新闻: ' + e.message);
   }
 
   if (results.length === 0) {
