@@ -30,7 +30,7 @@
 | 来源 | 接口类型 | 备注 |
 |------|---------|------|
 | 量子位 | RSS | https://www.qbitai.com/feed |
-| 机器之心 | RSS | https://www.jiqizhixin.com/rss（有时返回空） |
+| 机器之心 | RSS | https://www.jiqizhixin.com/rss （有时返回空） |
 | IT之家 | RSS | https://www.ithome.com/rss/  按 AI 关键词过滤 |
 | OpenAI Blog | RSS | https://openai.com/blog/rss.xml |
 | Google AI Blog | RSS | https://blog.google/technology/ai/rss/ |
