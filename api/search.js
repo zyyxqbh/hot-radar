@@ -228,20 +228,22 @@ async function getBilibili() {
 // ── 投资参考 ────────────────────────────────────────────────
 
 async function getInvestmentData() {
-  var [indicesRes, sectorsRes, liquorRes, fundRes] = await Promise.allSettled([
-    getMultiKeywordNews(['涨停', '板块', '主力资金'], 6),
-    getMultiKeywordNews(['白酒', '茅台', '五粮液'], 6),
-    getMultiKeywordNews(['央行', '基金', '货币政策'], 6)
-  ]);
-  var indices    = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
-  var hotSectors = sectorsRes.status === 'fulfilled' ? sectorsRes.value : [];
-  var liquor     = liquorRes.status  === 'fulfilled' ? liquorRes.value  : [];
-  var fundPolicy = fundRes.status    === 'fulfilled' ? fundRes.value    : [];
+  var [indicesRes, financeRes] = await Promise.allSettled([getIndices(), getFinanceNews()]);
+  var indices  = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
+  var allNews  = financeRes.status === 'fulfilled' ? financeRes.value : [];
 
-  console.log('投资数据: 指数' + indices.length + ' 板块' + hotSectors.length + ' 白酒' + liquor.length + ' 基金' + fundPolicy.length);
+  var hotSectors = filterByKeywords(allNews, ['涨停','板块','主力','龙头','题材','热点','概念'], 6);
+  var liquor     = filterByKeywords(allNews, ['白酒','茅台','五粮液','泸州老窖','汾酒','酒企'], 6);
+  var fundPolicy = filterByKeywords(allNews, ['基金','央行','货币','降准','降息','利率','美联储','政策'], 6);
+
+  // 如果分类没匹配上，用最新综合新闻兜底
+  if (hotSectors.length === 0) hotSectors = allNews.slice(0, 6);
+  if (fundPolicy.length === 0) fundPolicy = allNews.slice(6, 12);
+
+  console.log('投资数据: 指数' + indices.length + ' 总新闻' + allNews.length + ' 板块' + hotSectors.length + ' 白酒' + liquor.length + ' 基金' + fundPolicy.length);
 
   var aiSummary = '';
-  if (indices.length > 0 || hotSectors.length > 0) {
+  if (indices.length > 0 || allNews.length > 0) {
     var idxText = indices.length > 0
       ? indices.map(function(i) { return i.name + ' ' + i.price + ' ' + (i.isUp ? '涨' : '跌') + i.changePct + '%'; }).join('、')
       : '指数数据暂无';
@@ -266,8 +268,6 @@ async function getIndices() {
     { secid: '0.399006', name: '创业板指', code: '399006' },
     { secid: '1.000300', name: '沪深300',  code: '000300' }
   ];
-
-  // 主：东方财富
   try {
     var res = await httpGet(
       'https://push2.eastmoney.com/api/qt/ulist.np/get?secids=' + list.map(function(i){return i.secid;}).join(',') +
@@ -283,56 +283,43 @@ async function getIndices() {
       });
     }
   } catch (e) { console.error('指数(东财): ' + e.message); }
-
-  // 备用：腾讯财经
-  try {
-    var codes = ['sh000001','sz399001','sz399006','sh000300'].join(',');
-    var res2 = await httpGet('https://qt.gtimg.cn/q=' + codes, {
-      headers: { 'Referer': 'https://stockapp.finance.qq.com' }
-    }, 5000);
-    var txt = await res2.text();
-    var results = [];
-    for (var i = 0; i < list.length; i++) {
-      var code = ['sh000001','sz399001','sz399006','sh000300'][i];
-      var m = txt.match(new RegExp('v_' + code + '="([^"]+)"'));
-      if (!m) continue;
-      var f = m[1].split('~');
-      // 腾讯格式：~名称~代码~当前价~昨收~今开~成交量~外盘~内盘~...~涨跌~涨跌%
-      var price = f[3], prevClose = f[4], change = f[31], pct = f[32];
-      if (!price) continue;
-      results.push({ name: list[i].name, price: price, change: parseFloat(change || 0).toFixed(2), changePct: parseFloat(pct || 0).toFixed(2), isUp: parseFloat(pct || 0) >= 0 });
-    }
-    if (results.length > 0) { console.log('指数(腾讯)成功: ' + results.length); return results; }
-  } catch (e) { console.error('指数(腾讯): ' + e.message); }
-
   return [];
 }
 
-async function getEastmoneyNews(keyword, size) {
-  try {
-    var res = await httpGet(
-      'https://np-listapi.eastmoney.com/comm/web/getListInfo?type=1&client=web&biz=web_news_search&keyword=' +
-      encodeURIComponent(keyword) + '&pageSize=' + size + '&pageIndex=1&_=' + Date.now(), {}, 6000);
-    var data = await res.json();
-    var list = (data && data.data && data.data.list) || [];
-    console.log('东财新闻"' + keyword + '"成功: ' + list.length);
-    return list.map(function(item) {
-      return { title: item.title, description: item.digest || '', source: item.mediaName || '东方财富', time: item.publishTime ? formatDate(item.publishTime) : getNow(), url: item.url || 'https://finance.eastmoney.com' };
-    });
-  } catch (e) { console.error('东财新闻"' + keyword + '": ' + e.message); return []; }
-}
-async function getMultiKeywordNews(keywords, size) {
+async function getFinanceNews() {
+  var sources = [
+    'https://rsshub.rssforever.com/cls/depth/1003',
+    'https://rsshub.rssforever.com/cls/telegraph',
+    'https://rsshub.rssforever.com/eastmoney/cfh/news',
+    'https://rsshub.app/cls/depth/1003',
+    'https://rsshub.app/cls/telegraph'
+  ];
   var all = [];
-  for (var i = 0; i < keywords.length; i++) {
-    var batch = await getEastmoneyNews(keywords[i], 3);
-    all = all.concat(batch);
-    if (all.length >= size) break;
+  for (var i = 0; i < sources.length; i++) {
+    try {
+      var res = await httpGet(sources[i], {}, 6000);
+      if (!res.ok) continue;
+      var xml = await res.text();
+      var items = parseRSS(xml);
+      if (items.length === 0) continue;
+      console.log('财经源成功: ' + sources[i] + ' (' + items.length + '条)');
+      var sourceName = sources[i].indexOf('cls') >= 0 ? '财联社' : '东方财富';
+      all = all.concat(items.map(function(it) {
+        return { title: it.title, description: it.description || '', source: sourceName, time: formatDate(it.pubDate) || getNow(), url: it.url };
+      }));
+      if (all.length >= 30) break;
+    } catch (e) { console.error('财经源 ' + sources[i] + ': ' + e.message); }
   }
-  // 按标题去重
+  // 标题去重
   var seen = new Set();
-  return all.filter(function(it) {
-    if (seen.has(it.title)) return false;
-    seen.add(it.title);
-    return true;
-  }).slice(0, size);
+  return all.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; });
+}
+
+function filterByKeywords(news, keywords, size) {
+  var filtered = news.filter(function(n) {
+    var text = (n.title || '') + ' ' + (n.description || '');
+    return keywords.some(function(k) { return text.indexOf(k) >= 0; });
+  });
+  return filtered.slice(0, size || 6);
+}
 }
