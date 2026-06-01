@@ -128,7 +128,6 @@ async function getAINews() {
   var seen = new Set();
   var deduped = results.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; }).slice(0, 12);
 
-  // AI 速览摘要
   var summary = '';
   if (deduped.length > 0) {
     var brief = deduped.slice(0, 6).map(function(it) { return '• ' + it.title; }).join('\n');
@@ -153,10 +152,9 @@ async function getSocietyNews() {
 
 async function getHeadlines() {
   var sources = [
-    { url: 'https://rsshub.rssforever.com/thepaper/featured',     name: '澎湃新闻' },
-    { url: 'https://rsshub.rssforever.com/zhihu/daily',            name: '知乎日报' },
-    { url: 'https://rsshub.rssforever.com/people/whgz',            name: '人民网' },
-    { url: 'https://rsshub.app/thepaper/featured',                 name: '澎湃新闻' }
+    { url: 'https://rsshub.rssforever.com/thepaper/featured', name: '澎湃新闻' },
+    { url: 'https://rsshub.rssforever.com/zhihu/daily',        name: '知乎日报' },
+    { url: 'https://rsshub.app/thepaper/featured',             name: '澎湃新闻' }
   ];
   var results = [];
   var seenName = new Set();
@@ -229,14 +227,13 @@ async function getBilibili() {
 
 async function getInvestmentData() {
   var [indicesRes, financeRes] = await Promise.allSettled([getIndices(), getFinanceNews()]);
-  var indices  = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
-  var allNews  = financeRes.status === 'fulfilled' ? financeRes.value : [];
+  var indices = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
+  var allNews = financeRes.status === 'fulfilled' ? financeRes.value : [];
 
   var hotSectors = filterByKeywords(allNews, ['涨停','板块','主力','龙头','题材','热点','概念'], 6);
   var liquor     = filterByKeywords(allNews, ['白酒','茅台','五粮液','泸州老窖','汾酒','酒企'], 6);
   var fundPolicy = filterByKeywords(allNews, ['基金','央行','货币','降准','降息','利率','美联储','政策'], 6);
 
-  // 如果分类没匹配上，用最新综合新闻兜底
   if (hotSectors.length === 0) hotSectors = allNews.slice(0, 6);
   if (fundPolicy.length === 0) fundPolicy = allNews.slice(6, 12);
 
@@ -310,7 +307,6 @@ async function getFinanceNews() {
       if (all.length >= 30) break;
     } catch (e) { console.error('财经源 ' + sources[i] + ': ' + e.message); }
   }
-  // 标题去重
   var seen = new Set();
   return all.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; });
 }
@@ -321,5 +317,4 @@ function filterByKeywords(news, keywords, size) {
     return keywords.some(function(k) { return text.indexOf(k) >= 0; });
   });
   return filtered.slice(0, size || 6);
-}
 }
