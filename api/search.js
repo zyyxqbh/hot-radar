@@ -284,29 +284,71 @@ async function getIndices() {
 }
 
 async function getFinanceNews() {
-  var sources = [
-    'https://rsshub.rssforever.com/cls/depth/1003',
-    'https://rsshub.rssforever.com/cls/telegraph',
-    'https://rsshub.rssforever.com/eastmoney/cfh/news',
-    'https://rsshub.app/cls/depth/1003',
-    'https://rsshub.app/cls/telegraph'
-  ];
   var all = [];
-  for (var i = 0; i < sources.length; i++) {
+
+  // 路线1：东方财富 7x24 快讯接口（既然指数能通，这个大概率也能通）
+  var emEndpoints = [
+    { url: 'https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=30&_=' + Date.now(), name: '东财快讯' },
+    { url: 'https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_50_1.html?_=' + Date.now(), name: '东财老快讯' }
+  ];
+
+  for (var i = 0; i < emEndpoints.length; i++) {
+    var ep = emEndpoints[i];
     try {
-      var res = await httpGet(sources[i], {}, 6000);
+      var res = await httpGet(ep.url, { headers: { 'Referer': 'https://kuaixun.eastmoney.com/' } }, 6000);
+      console.log(ep.name + ' 状态: ' + res.status);
       if (!res.ok) continue;
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (items.length === 0) continue;
-      console.log('财经源成功: ' + sources[i] + ' (' + items.length + '条)');
-      var sourceName = sources[i].indexOf('cls') >= 0 ? '财联社' : '东方财富';
-      all = all.concat(items.map(function(it) {
-        return { title: it.title, description: it.description || '', source: sourceName, time: formatDate(it.pubDate) || getNow(), url: it.url };
-      }));
-      if (all.length >= 30) break;
-    } catch (e) { console.error('财经源 ' + sources[i] + ': ' + e.message); }
+      var raw = await res.text();
+      var jsonStr = raw.replace(/^[^{[]+/, '').replace(/[^}\]]+$/, '');
+      try {
+        var data = JSON.parse(jsonStr);
+        var list = (data && data.data && data.data.fastNewsList) ||
+                   (data && data.data && data.data.list) ||
+                   (data && data.LivesList) ||
+                   (data && data.list) || [];
+        console.log(ep.name + ' 数据条数: ' + list.length);
+        if (list.length === 0) continue;
+        all = all.concat(list.slice(0, 30).map(function(item) {
+          return {
+            title: item.title || item.Title || item.digest || '',
+            description: item.digest || item.summary || item.Digest || '',
+            source: '东方财富快讯',
+            time: (item.showTime || item.publishTime || item.ShowTime) ? formatDate(item.showTime || item.publishTime || item.ShowTime) : getNow(),
+            url: item.url || item.titleUrl || item.Url || 'https://kuaixun.eastmoney.com'
+          };
+        }));
+        if (all.length >= 20) break;
+      } catch (parseErr) {
+        console.error(ep.name + ' JSON 解析失败: ' + parseErr.message);
+      }
+    } catch (e) { console.error(ep.name + ': ' + e.message); }
   }
+
+  // 路线2：RSSHub 财联社（带详细日志）
+  if (all.length === 0) {
+    var rssSources = [
+      'https://rsshub.rssforever.com/cls/telegraph',
+      'https://rsshub.rssforever.com/cls/depth/1003',
+      'https://rsshub.app/cls/telegraph',
+      'https://rsshub.app/cls/depth/1003'
+    ];
+    for (var j = 0; j < rssSources.length; j++) {
+      try {
+        var res2 = await httpGet(rssSources[j], {}, 6000);
+        console.log('RSS ' + rssSources[j] + ' 状态: ' + res2.status);
+        if (!res2.ok) continue;
+        var xml = await res2.text();
+        var items = parseRSS(xml);
+        console.log('RSS 解析: ' + items.length + ' 条');
+        if (items.length === 0) continue;
+        all = items.map(function(it) {
+          return { title: it.title, description: it.description || '', source: '财联社', time: formatDate(it.pubDate) || getNow(), url: it.url };
+        });
+        break;
+      } catch (e) { console.error('RSS ' + rssSources[j] + ': ' + e.message); }
+    }
+  }
+
   var seen = new Set();
   return all.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; });
 }
