@@ -165,28 +165,43 @@ function renderBasicPanel(panelId, items) {
   panel.innerHTML = '<div class="cards">' + items.map(buildCard).join('') + '</div>';
 }
 
-function renderSociety(data) {
-  const panel = document.getElementById('panel-society');
-  if (!data) { panel.innerHTML = '<div class="empty">暂无数据</div>'; return; }
-  const sections = [
-    { key: 'weibo',    label: '微博热搜', icon: '🔥' },
-    { key: 'bilibili', label: 'B站热搜',  icon: '📺' },
-    { key: 'thepaper', label: '澎湃新闻', icon: '📰' }
-  ];
+  function renderAI(data) {
+  const panel = document.getElementById('panel-ai');
+  if (!data || (!data.news && !data.summary)) { panel.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+  const news = data.news || [];
   let html = '';
-  sections.forEach(function(sec) {
-    const items = data[sec.key] || [];
-    html += '<div class="source-section">';
-    html += '<div class="source-header">' + sec.icon + ' ' + sec.label +
-            '<span class="source-status">' + (items.length > 0 ? items.length + ' 条' : '暂不可用') + '</span></div>';
-    html += items.length > 0
-      ? '<div class="cards">' + items.map(buildCard).join('') + '</div>'
-      : '<div class="empty" style="padding:16px 0;font-size:13px;">获取失败，刷新重试</div>';
-    html += '</div>';
-  });
+  if (data.summary) {
+    html += '<div class="ai-summary"><div class="ai-summary-header">🤖 今日 AI 速览</div><div class="ai-summary-text">' + esc(data.summary) + '</div></div>';
+  }
+  html += news.length > 0
+    ? '<div class="cards">' + news.map(buildCard).join('') + '</div>'
+    : '<div class="empty">暂无 AI 资讯</div>';
   panel.innerHTML = html;
 }
   
+function renderSociety(data) {
+  const panel = document.getElementById('panel-society');
+  if (!data) { panel.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+  const headlines = data.headlines || [];
+  const hot = data.hot || [];
+  let html = '';
+
+  html += '<div class="source-section">';
+  html += '<div class="source-header">📰 今日要闻<span class="source-status">' + (headlines.length > 0 ? headlines.length + ' 条' : '暂不可用') + '</span></div>';
+  html += headlines.length > 0
+    ? '<div class="cards">' + headlines.map(buildCard).join('') + '</div>'
+    : '<div class="empty" style="padding:16px 0;font-size:13px;">获取失败，刷新重试</div>';
+  html += '</div>';
+
+  html += '<div class="source-section">';
+  html += '<div class="source-header">🔥 热议话题<span class="source-status">' + (hot.length > 0 ? hot.length + ' 条' : '暂不可用') + '</span></div>';
+  html += hot.length > 0
+    ? '<div class="cards">' + hot.map(buildCard).join('') + '</div>'
+    : '<div class="empty" style="padding:16px 0;font-size:13px;">获取失败，刷新重试</div>';
+  html += '</div>';
+
+  panel.innerHTML = html;
+}  
 function renderInvestment(data) {
   const panel = document.getElementById('panel-investment');
 
@@ -243,7 +258,7 @@ async function loadData() {
   try {
     const res = await fetch('/api/search');
     const data = await res.json();
-    renderBasicPanel('ai', data.ai);
+    renderAI(data.ai);
     renderSociety(data.society);
     renderInvestment(data.investment || {});
     if (data.updateTime) {
