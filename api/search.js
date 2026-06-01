@@ -226,30 +226,35 @@ async function getBilibili() {
 // ── 投资参考 ────────────────────────────────────────────────
 
 async function getInvestmentData() {
-  var [indicesRes, financeRes] = await Promise.allSettled([getIndices(), getFinanceNews()]);
-  var indices = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
-  var allNews = financeRes.status === 'fulfilled' ? financeRes.value : [];
+  var [indicesRes, sectorsRes, liquorRes, gainersRes] = await Promise.allSettled([
+    getIndices(),
+    getHotSectors(),
+    getLiquorStocks(),
+    getGainers()
+  ]);
+  var indices    = indicesRes.status  === 'fulfilled' ? indicesRes.value  : [];
+  var hotSectors = sectorsRes.status  === 'fulfilled' ? sectorsRes.value  : [];
+  var liquor     = liquorRes.status   === 'fulfilled' ? liquorRes.value   : [];
+  var fundPolicy = gainersRes.status  === 'fulfilled' ? gainersRes.value  : [];
 
-  var hotSectors = filterByKeywords(allNews, ['涨停','板块','主力','龙头','题材','热点','概念'], 6);
-  var liquor     = filterByKeywords(allNews, ['白酒','茅台','五粮液','泸州老窖','汾酒','酒企'], 6);
-  var fundPolicy = filterByKeywords(allNews, ['基金','央行','货币','降准','降息','利率','美联储','政策'], 6);
-
-  if (hotSectors.length === 0) hotSectors = allNews.slice(0, 6);
-  if (fundPolicy.length === 0) fundPolicy = allNews.slice(6, 12);
-
-  console.log('投资数据: 指数' + indices.length + ' 总新闻' + allNews.length + ' 板块' + hotSectors.length + ' 白酒' + liquor.length + ' 基金' + fundPolicy.length);
+  console.log('投资数据: 指数' + indices.length + ' 板块' + hotSectors.length + ' 白酒' + liquor.length + ' 涨幅榜' + fundPolicy.length);
 
   var aiSummary = '';
-  if (indices.length > 0 || allNews.length > 0) {
+  if (indices.length > 0 || hotSectors.length > 0 || liquor.length > 0) {
     var idxText = indices.length > 0
       ? indices.map(function(i) { return i.name + ' ' + i.price + ' ' + (i.isUp ? '涨' : '跌') + i.changePct + '%'; }).join('、')
       : '指数数据暂无';
-    var news = hotSectors.slice(0, 2).concat(liquor.slice(0, 2)).concat(fundPolicy.slice(0, 2));
-    var newsText = news.length > 0 ? news.map(function(n) { return '• ' + n.title; }).join('\n') : '暂无新闻';
+    var sectorText = hotSectors.length > 0
+      ? '今日领涨板块：' + hotSectors.slice(0, 3).map(function(s) { return s.name + '(+' + s.changePct + '%)'; }).join('、')
+      : '';
+    var liquorText = liquor.length > 0
+      ? '白酒板块代表：' + liquor.slice(0, 3).map(function(s) { return s.name + (s.isUp ? '+' : '') + s.changePct + '%'; }).join('、')
+      : '';
     aiSummary = await deepseekChat(
-      '你是用大白话讲股市的朋友，回答100字以内，不用专业术语。',
-      '今日A股：' + idxText + '\n今日要闻：\n' + newsText + '\n\n用3句大白话总结：①大盘今天怎么样 ②白酒板块需注意什么 ③普通投资者今天该做什么。',
-      250
+      '你是用大白话讲股市的朋友，回答120字以内，不用专业术语，给重仓白酒的用户提建议。',
+      '今日A股：\n大盘：' + idxText + '\n' + sectorText + '\n' + liquorText +
+      '\n\n用3句大白话总结：①大盘今天怎么样 ②白酒板块怎么走 ③重仓白酒的投资者今天该注意什么。',
+      300
     );
   } else {
     aiSummary = '今日所有行情接口暂时不可用，请稍后刷新重试。';
@@ -272,91 +277,90 @@ async function getIndices() {
     var data = await res.json();
     var diff = (data && data.data && data.data.diff) || [];
     if (diff.length > 0) {
-      console.log('指数(东财)成功: ' + diff.length);
+      console.log('指数成功: ' + diff.length);
       return diff.map(function(item) {
         var info = list.filter(function(i) { return i.code === item.f12; })[0] || {};
         var pct = parseFloat(item.f3) || 0;
         return { name: info.name || item.f14, price: item.f2, change: (parseFloat(item.f4) || 0).toFixed(2), changePct: pct.toFixed(2), isUp: pct >= 0 };
       });
     }
-  } catch (e) { console.error('指数(东财): ' + e.message); }
+  } catch (e) { console.error('指数: ' + e.message); }
   return [];
 }
 
-async function getFinanceNews() {
-  var all = [];
-
-  // 路线1：东方财富 7x24 快讯接口（既然指数能通，这个大概率也能通）
-  var emEndpoints = [
-    { url: 'https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=30&_=' + Date.now(), name: '东财快讯' },
-    { url: 'https://newsapi.eastmoney.com/kuaixun/v1/getlist_102_ajaxResult_50_1.html?_=' + Date.now(), name: '东财老快讯' }
-  ];
-
-  for (var i = 0; i < emEndpoints.length; i++) {
-    var ep = emEndpoints[i];
-    try {
-      var res = await httpGet(ep.url, { headers: { 'Referer': 'https://kuaixun.eastmoney.com/' } }, 6000);
-      console.log(ep.name + ' 状态: ' + res.status);
-      if (!res.ok) continue;
-      var raw = await res.text();
-      var jsonStr = raw.replace(/^[^{[]+/, '').replace(/[^}\]]+$/, '');
-      try {
-        var data = JSON.parse(jsonStr);
-        var list = (data && data.data && data.data.fastNewsList) ||
-                   (data && data.data && data.data.list) ||
-                   (data && data.LivesList) ||
-                   (data && data.list) || [];
-        console.log(ep.name + ' 数据条数: ' + list.length);
-        if (list.length === 0) continue;
-        all = all.concat(list.slice(0, 30).map(function(item) {
-          return {
-            title: item.title || item.Title || item.digest || '',
-            description: item.digest || item.summary || item.Digest || '',
-            source: '东方财富快讯',
-            time: (item.showTime || item.publishTime || item.ShowTime) ? formatDate(item.showTime || item.publishTime || item.ShowTime) : getNow(),
-            url: item.url || item.titleUrl || item.Url || 'https://kuaixun.eastmoney.com'
-          };
-        }));
-        if (all.length >= 20) break;
-      } catch (parseErr) {
-        console.error(ep.name + ' JSON 解析失败: ' + parseErr.message);
-      }
-    } catch (e) { console.error(ep.name + ': ' + e.message); }
-  }
-
-  // 路线2：RSSHub 财联社（带详细日志）
-  if (all.length === 0) {
-    var rssSources = [
-      'https://rsshub.rssforever.com/cls/telegraph',
-      'https://rsshub.rssforever.com/cls/depth/1003',
-      'https://rsshub.app/cls/telegraph',
-      'https://rsshub.app/cls/depth/1003'
-    ];
-    for (var j = 0; j < rssSources.length; j++) {
-      try {
-        var res2 = await httpGet(rssSources[j], {}, 6000);
-        console.log('RSS ' + rssSources[j] + ' 状态: ' + res2.status);
-        if (!res2.ok) continue;
-        var xml = await res2.text();
-        var items = parseRSS(xml);
-        console.log('RSS 解析: ' + items.length + ' 条');
-        if (items.length === 0) continue;
-        all = items.map(function(it) {
-          return { title: it.title, description: it.description || '', source: '财联社', time: formatDate(it.pubDate) || getNow(), url: it.url };
-        });
-        break;
-      } catch (e) { console.error('RSS ' + rssSources[j] + ': ' + e.message); }
-    }
-  }
-
-  var seen = new Set();
-  return all.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; });
+async function getHotSectors() {
+  try {
+    var url = 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=15&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f12,f14,f104,f105,f128&ut=bd1d9ddb04089700cf9c27f6f7426281';
+    var res = await httpGet(url, {}, 6000);
+    var data = await res.json();
+    var diff = (data && data.data && data.data.diff) || [];
+    console.log('板块涨跌成功: ' + diff.length);
+    return diff.slice(0, 10).map(function(item) {
+      var pct = parseFloat(item.f3) || 0;
+      var sign = pct >= 0 ? '+' : '';
+      return {
+        title: item.f14 + '  ' + sign + pct.toFixed(2) + '%',
+        description: '领涨股：' + (item.f128 || '-') + '  上涨 ' + (item.f104 || 0) + ' 家 / 下跌 ' + (item.f105 || 0) + ' 家',
+        source: '行业板块',
+        time: getNow(),
+        url: 'https://quote.eastmoney.com/bk/90.' + item.f12 + '.html',
+        stockInfo: sign + pct.toFixed(2) + '%',
+        name: item.f14
+      };
+    });
+  } catch (e) { console.error('板块: ' + e.message); return []; }
 }
 
-function filterByKeywords(news, keywords, size) {
-  var filtered = news.filter(function(n) {
-    var text = (n.title || '') + ' ' + (n.description || '');
-    return keywords.some(function(k) { return text.indexOf(k) >= 0; });
-  });
-  return filtered.slice(0, size || 6);
+async function getLiquorStocks() {
+  try {
+    var url = 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&fid=f3&fs=b:BK0464&fields=f2,f3,f4,f12,f14&ut=bd1d9ddb04089700cf9c27f6f7426281';
+    var res = await httpGet(url, {}, 6000);
+    var data = await res.json();
+    var diff = (data && data.data && data.data.diff) || [];
+    console.log('白酒成分股成功: ' + diff.length);
+    return diff.slice(0, 12).map(function(item) {
+      var pct = parseFloat(item.f3) || 0;
+      var price = item.f2;
+      var change = item.f4 || 0;
+      var sign = pct >= 0 ? '+' : '';
+      var market = String(item.f12).charAt(0) === '6' ? 'sh' : 'sz';
+      return {
+        title: item.f14 + '  ' + price + ' 元',
+        description: '涨跌幅：' + sign + pct.toFixed(2) + '%  涨跌额：' + sign + change + ' 元',
+        source: '白酒板块',
+        time: getNow(),
+        url: 'https://quote.eastmoney.com/' + market + item.f12 + '.html',
+        stockInfo: sign + pct.toFixed(2) + '%',
+        isUp: pct >= 0,
+        changePct: pct.toFixed(2),
+        name: item.f14
+      };
+    });
+  } catch (e) { console.error('白酒: ' + e.message); return []; }
+}
+
+async function getGainers() {
+  try {
+    var url = 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=15&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23&fields=f2,f3,f4,f12,f14&ut=bd1d9ddb04089700cf9c27f6f7426281';
+    var res = await httpGet(url, {}, 6000);
+    var data = await res.json();
+    var diff = (data && data.data && data.data.diff) || [];
+    console.log('涨幅榜成功: ' + diff.length);
+    return diff.slice(0, 12).map(function(item) {
+      var pct = parseFloat(item.f3) || 0;
+      var price = item.f2;
+      var change = item.f4 || 0;
+      var sign = pct >= 0 ? '+' : '';
+      var market = String(item.f12).charAt(0) === '6' ? 'sh' : 'sz';
+      return {
+        title: item.f14 + '  ' + sign + pct.toFixed(2) + '%',
+        description: '现价：' + price + ' 元  涨跌额：' + sign + change + ' 元',
+        source: '涨幅榜',
+        time: getNow(),
+        url: 'https://quote.eastmoney.com/' + market + item.f12 + '.html',
+        stockInfo: sign + pct.toFixed(2) + '%',
+        name: item.f14
+      };
+    });
+  } catch (e) { console.error('涨幅榜: ' + e.message); return []; }
 }
