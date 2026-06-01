@@ -105,7 +105,6 @@ async function getAINews() {
     { url: 'https://www.jiqizhixin.com/rss',    name: '机器之心', filter: false },
     { url: 'https://www.ithome.com/rss/',       name: 'IT之家',   filter: true  },
     { url: 'https://openai.com/blog/rss.xml',   name: 'OpenAI',   filter: false },
-    { url: 'https://www.anthropic.com/news/rss.xml', name: 'Anthropic', filter: false },
     { url: 'https://blog.google/technology/ai/rss/', name: 'Google AI', filter: false }
   ];
   var results = [];
@@ -230,10 +229,9 @@ async function getBilibili() {
 
 async function getInvestmentData() {
   var [indicesRes, sectorsRes, liquorRes, fundRes] = await Promise.allSettled([
-    getIndices(),
-    getEastmoneyNews('涨停 板块', 5),
-    getEastmoneyNews('白酒 茅台 五粮液', 5),
-    getEastmoneyNews('基金 央行 货币政策', 5)
+    getMultiKeywordNews(['涨停', '板块', '主力资金'], 6),
+    getMultiKeywordNews(['白酒', '茅台', '五粮液'], 6),
+    getMultiKeywordNews(['央行', '基金', '货币政策'], 6)
   ]);
   var indices    = indicesRes.status === 'fulfilled' ? indicesRes.value : [];
   var hotSectors = sectorsRes.status === 'fulfilled' ? sectorsRes.value : [];
@@ -322,4 +320,19 @@ async function getEastmoneyNews(keyword, size) {
       return { title: item.title, description: item.digest || '', source: item.mediaName || '东方财富', time: item.publishTime ? formatDate(item.publishTime) : getNow(), url: item.url || 'https://finance.eastmoney.com' };
     });
   } catch (e) { console.error('东财新闻"' + keyword + '": ' + e.message); return []; }
+}
+async function getMultiKeywordNews(keywords, size) {
+  var all = [];
+  for (var i = 0; i < keywords.length; i++) {
+    var batch = await getEastmoneyNews(keywords[i], 3);
+    all = all.concat(batch);
+    if (all.length >= size) break;
+  }
+  // 按标题去重
+  var seen = new Set();
+  return all.filter(function(it) {
+    if (seen.has(it.title)) return false;
+    seen.add(it.title);
+    return true;
+  }).slice(0, size);
 }
