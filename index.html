@@ -32,6 +32,11 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .empty { text-align: center; padding: 60px 0; color: #bbb; font-size: 14px; line-height: 2; }
 
+    /* 分组 */
+    .group { margin-bottom: 24px; }
+    .group:last-child { margin-bottom: 0; }
+    .group-header { font-size: 14px; font-weight: 700; color: #555; margin-bottom: 10px; padding-left: 8px; border-left: 3px solid #c0392b; }
+
     /* 卡片 */
     .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
     .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 8px; transition: box-shadow 0.2s, transform 0.2s; }
@@ -182,6 +187,28 @@ function renderSection(key, items) {
   if (status) status.textContent = items && items.length > 0 ? items.length + ' 条' : '暂不可用';
 }
 
+function renderGroupedSection(key, items) {
+  var body = document.querySelector('#panel-' + key + ' .panel-body');
+  var status = document.getElementById('status-' + key);
+  if (!items || items.length === 0) {
+    body.innerHTML = '<div class="empty">暂无数据，请稍后重试</div>';
+    if (status) status.textContent = '暂不可用';
+    return;
+  }
+  var groups = {};
+  var order = [];
+  items.forEach(function(it) {
+    var src = it.source || '其他';
+    if (!groups[src]) { groups[src] = []; order.push(src); }
+    groups[src].push(it);
+  });
+  body.innerHTML = order.map(function(src) {
+    return '<div class="group"><div class="group-header">' + esc(src) + '</div>' +
+      '<div class="cards">' + groups[src].map(buildCard).join('') + '</div></div>';
+  }).join('');
+  if (status) status.textContent = items.length + ' 条';
+}
+
 function setLoading() {
   var loadingHtml = '<div class="loading"><div class="spinner"></div>加载中...</div>';
   ['headlines', 'hot', 'international'].forEach(function(k) {
@@ -201,7 +228,7 @@ async function loadData() {
     var res = await fetch('/api/search');
     var data = await res.json();
     renderSection('headlines', data.headlines);
-    renderSection('hot', data.hot);
+    renderGroupedSection('hot', data.hot);
     renderSection('international', data.international);
     if (data.updateTime) {
       document.getElementById('updateTime').textContent = '更新于 ' + data.updateTime;
