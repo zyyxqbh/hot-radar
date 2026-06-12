@@ -19,15 +19,18 @@
 
     .main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
 
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab-btn { padding: 8px 18px; border: 1.5px solid #e0e0e0; border-radius: 20px; background: #fff; color: #555; font-size: 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .tab-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .panel-status { font-size: 12px; color: #aaa; margin-bottom: 12px; text-align: right; }
+
     .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #aaa; gap: 12px; font-size: 14px; }
     .spinner { width: 26px; height: 26px; border: 3px solid #eee; border-top-color: #1a1a1a; border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .empty { text-align: center; padding: 60px 0; color: #bbb; font-size: 14px; line-height: 2; }
-
-    /* 区块 */
-    .source-section { margin-bottom: 28px; }
-    .source-header { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #c0392b; display: flex; align-items: center; justify-content: space-between; }
-    .source-status { font-size: 12px; color: #aaa; font-weight: normal; }
 
     /* 卡片 */
     .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
@@ -45,7 +48,13 @@
     .card-time { font-size: 12px; color: #bbb; }
     .mark-btn { background: #fff; border: 1px solid #e0e0e0; color: #888; font-size: 12px; padding: 4px 10px; border-radius: 14px; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
     .mark-btn:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
-    .mark-btn.marked { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
+    /* 标记备注表单 */
+    .mark-form { display: none; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .mark-form.open { display: flex; }
+    .mark-form textarea { resize: vertical; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; }
+    .mark-form .mark-confirm { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; align-self: flex-end; transition: background 0.2s; }
+    .mark-form .mark-confirm:hover { background: #333; }
 
     /* toast */
     .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a1a1a; color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 1000; }
@@ -75,19 +84,25 @@
 </div>
 
 <div class="main">
-  <div id="panel-headlines" class="source-section">
-    <div class="source-header">📰 今日要闻<span class="source-status" id="status-headlines"></span></div>
-    <div class="empty">点击「刷新热点」加载今日要闻</div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('headlines', this)">📰 今日要闻</button>
+    <button class="tab-btn" onclick="switchTab('hot', this)">🔥 国内热议</button>
+    <button class="tab-btn" onclick="switchTab('international', this)">🌍 国际视野</button>
   </div>
 
-  <div id="panel-hot" class="source-section">
-    <div class="source-header">🔥 国内热议<span class="source-status" id="status-hot"></span></div>
-    <div class="empty">点击「刷新热点」加载国内热议</div>
+  <div id="panel-headlines" class="panel active">
+    <div class="panel-status" id="status-headlines"></div>
+    <div class="panel-body"><div class="empty">点击「刷新热点」加载今日要闻</div></div>
   </div>
 
-  <div id="panel-international" class="source-section">
-    <div class="source-header">🌍 国际视野<span class="source-status" id="status-international"></span></div>
-    <div class="empty">点击「刷新热点」加载国际新闻</div>
+  <div id="panel-hot" class="panel">
+    <div class="panel-status" id="status-hot"></div>
+    <div class="panel-body"><div class="empty">点击「刷新热点」加载国内热议</div></div>
+  </div>
+
+  <div id="panel-international" class="panel">
+    <div class="panel-status" id="status-international"></div>
+    <div class="panel-body"><div class="empty">点击「刷新热点」加载国际新闻</div></div>
   </div>
 </div>
 
@@ -98,6 +113,13 @@ function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
 function showToast(msg) {
   var toast = document.getElementById('toast');
   toast.textContent = msg;
@@ -105,13 +127,23 @@ function showToast(msg) {
   setTimeout(function() { toast.classList.remove('show'); }, 1800);
 }
 
-function markItem(btn, title, url, source, time) {
-  var line = '- [ ] [' + title + '](' + url + ') — ' + source + ' · ' + time;
+function toggleMark(btn) {
+  var form = btn.closest('.card').querySelector('.mark-form');
+  var open = form.classList.contains('open');
+  form.classList.toggle('open', !open);
+  if (!open) form.querySelector('textarea').focus();
+}
+
+function confirmMark(btn) {
+  var form = btn.closest('.mark-form');
+  var d = form.dataset;
+  var note = form.querySelector('textarea').value.trim();
+  var line = '- [ ] [' + d.title + '](' + d.url + ') — ' + d.source + ' · ' + d.time;
+  if (note) line += '\n  > ' + note;
   navigator.clipboard.writeText(line).then(function() {
     showToast('已复制，可粘贴到 Obsidian');
-    btn.classList.add('marked');
-    btn.textContent = '✅ 已标记';
-    setTimeout(function() { btn.classList.remove('marked'); btn.textContent = '📌 标记'; }, 1500);
+    form.classList.remove('open');
+    form.querySelector('textarea').value = '';
   }).catch(function() {
     showToast('复制失败，请手动选择');
   });
@@ -123,7 +155,6 @@ function buildCard(item) {
   var titleHtml = item.url
     ? '<a href="' + esc(item.url) + '" target="_blank" rel="noopener">' + esc(item.title) + '</a>'
     : esc(item.title);
-  var markAttrs = "markItem(this,'" + esc(item.title).replace(/'/g, "\\'") + "','" + esc(item.url || '').replace(/'/g, "\\'") + "','" + esc(item.source || '').replace(/'/g, "\\'") + "','" + esc(item.time || '').replace(/'/g, "\\'") + "')";
   return '<div class="card">' +
     rankHtml +
     '<div class="card-title">' + titleHtml + '</div>' +
@@ -133,30 +164,30 @@ function buildCard(item) {
     '<span class="card-source">' + esc(item.source || '') + '</span>' +
     '<span class="card-time">' + esc(item.time || '') + '</span>' +
     '</div>' +
-    '<button class="mark-btn" onclick="' + markAttrs + '">📌 标记</button>' +
-    '</div></div>';
+    '<button class="mark-btn" onclick="toggleMark(this)">📌 标记</button>' +
+    '</div>' +
+    '<div class="mark-form" data-title="' + esc(item.title) + '" data-url="' + esc(item.url || '') + '" data-source="' + esc(item.source || '') + '" data-time="' + esc(item.time || '') + '">' +
+    '<textarea placeholder="写下你的想法（可留空）" rows="2"></textarea>' +
+    '<button class="mark-confirm" onclick="confirmMark(this)">复制到 Obsidian</button>' +
+    '</div>' +
+    '</div>';
 }
 
 function renderSection(key, items) {
-  var panel = document.getElementById('panel-' + key);
+  var body = document.querySelector('#panel-' + key + ' .panel-body');
   var status = document.getElementById('status-' + key);
-  var cardsHtml = items && items.length > 0
+  body.innerHTML = items && items.length > 0
     ? '<div class="cards">' + items.map(buildCard).join('') + '</div>'
     : '<div class="empty">暂无数据，请稍后重试</div>';
-  panel.querySelector('.empty, .cards, .loading')?.remove();
-  panel.insertAdjacentHTML('beforeend', cardsHtml);
   if (status) status.textContent = items && items.length > 0 ? items.length + ' 条' : '暂不可用';
 }
 
 function setLoading() {
   var loadingHtml = '<div class="loading"><div class="spinner"></div>加载中...</div>';
   ['headlines', 'hot', 'international'].forEach(function(k) {
-    var panel = document.getElementById('panel-' + k);
-    var old = panel.querySelector('.empty, .cards, .loading');
-    if (old) old.remove();
+    document.querySelector('#panel-' + k + ' .panel-body').innerHTML = loadingHtml;
     var status = document.getElementById('status-' + k);
     if (status) status.textContent = '';
-    panel.insertAdjacentHTML('beforeend', loadingHtml);
   });
 }
 
@@ -177,10 +208,7 @@ async function loadData() {
     }
   } catch (e) {
     ['headlines', 'hot', 'international'].forEach(function(k) {
-      var panel = document.getElementById('panel-' + k);
-      var old = panel.querySelector('.empty, .cards, .loading');
-      if (old) old.remove();
-      panel.insertAdjacentHTML('beforeend', '<div class="empty">请求失败，请检查网络后重试</div>');
+      document.querySelector('#panel-' + k + ' .panel-body').innerHTML = '<div class="empty">请求失败，请检查网络后重试</div>';
     });
   }
 

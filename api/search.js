@@ -75,6 +75,51 @@ async function httpGet(url, opts, ms) {
   } finally { clearTimeout(id); }
 }
 
+async function deepseekChat(systemPrompt, userPrompt, maxTokens) {
+  var apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return '';
+  try {
+    var res = await httpGet('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.3, max_tokens: maxTokens || 200
+      })
+    }, 12000);
+    var data = await res.json();
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+  } catch (e) { console.error('DeepSeek: ' + e.message); return ''; }
+}
+
+// 将英文新闻标题/简介批量翻译为中文，失败时原样返回（保留英文）
+async function translateNews(items) {
+  if (items.length === 0) return items;
+  try {
+    var input = items.map(function(it) { return { title: it.title, description: it.description }; });
+    var content = await deepseekChat(
+      '你是专业的英中新闻翻译。输入是一个JSON数组，每项包含title和description。请将每项翻译成简洁的中文新闻用语，保持原意，不要添加解释或评论。直接返回一个JSON数组，结构、顺序、数量与输入完全一致，只输出JSON本身，不要markdown代码块标记。',
+      JSON.stringify(input),
+      2500
+    );
+    if (!content) return items;
+    var cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    var translated = JSON.parse(cleaned);
+    if (!Array.isArray(translated) || translated.length !== items.length) return items;
+    console.log('国际新闻翻译成功: ' + translated.length + ' 条');
+    return items.map(function(it, i) {
+      return Object.assign({}, it, {
+        title: translated[i].title || it.title,
+        description: translated[i].description || it.description
+      });
+    });
+  } catch (e) { console.error('翻译失败: ' + e.message); return items; }
+}
+
 // ── 今日要闻 ────────────────────────────────────────────────
 
 async function getHeadlines() {
@@ -179,8 +224,10 @@ async function getZhihuHot() {
 
 async function getInternationalNews() {
   var sources = [
-    { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',           name: 'BBC World' },
-    { url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', name: 'NYT World' }
+    { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',  name: 'BBC World' },
+    { url: 'https://www.aljazeera.com/xml/rss/all.xml',    name: 'Al Jazeera' },
+    { url: 'https://www.theguardian.com/world/rss',        name: 'Guardian World' },
+    { url: 'https://rss.dw.com/xml/rss-en-all',            name: 'DW News' }
   ];
   var results = [];
   for (var i = 0; i < sources.length; i++) {
@@ -192,12 +239,13 @@ async function getInternationalNews() {
       var items = parseRSS(xml);
       if (items.length === 0) continue;
       console.log('国际 ' + src.name + ' 成功: ' + items.length);
-      var picked = items.slice(0, 6).map(function(it) {
+      var picked = items.slice(0, 3).map(function(it) {
         return { title: it.title, description: it.description || 'Click for details', source: src.name, time: formatDate(it.pubDate), url: it.url };
       });
       results = results.concat(picked);
     } catch (e) { console.error('国际 ' + src.name + ': ' + e.message); }
   }
   var seen = new Set();
-  return results.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; }).slice(0, 10);
+  var deduped = results.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; }).slice(0, 12);
+  return await translateNews(deduped);
 }
