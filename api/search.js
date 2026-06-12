@@ -163,25 +163,25 @@ async function getHotTopics() {
 }
 
 async function getWeibo() {
-  var mirrors = [
-    'https://rsshub.rssforever.com/weibo/search/hot',
-    'https://hub.slarker.me/weibo/search/hot',
-    'https://rsshub.app/weibo/search/hot'
-  ];
-  for (var i = 0; i < mirrors.length; i++) {
-    try {
-      var res = await httpGet(mirrors[i], {}, 5000);
-      if (!res.ok) continue;
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (items.length === 0) continue;
-      console.log('微博成功: ' + mirrors[i]);
-      return items.slice(0, 8).map(function(it, idx) {
-        return { title: it.title, description: '热议中', source: '微博热搜', time: getNow(), url: it.url, rank: idx + 1 };
-      });
-    } catch (e) { console.error('微博 ' + mirrors[i] + ': ' + e.message); }
-  }
-  return [];
+  try {
+    var res = await httpGet('https://weibo.com/ajax/side/hotSearch',
+      { headers: { 'Referer': 'https://weibo.com' } }, 5000);
+    var data = await res.json();
+    var list = (data && data.data && data.data.realtime) || [];
+    if (list.length === 0) return [];
+    console.log('微博成功: ' + list.length);
+    return list.slice(0, 8).map(function(it, idx) {
+      var word = it.word || '';
+      return {
+        title: word,
+        description: it.num ? '热度 ' + it.num : '热议中',
+        source: '微博热搜',
+        time: getNow(),
+        url: 'https://s.weibo.com/weibo?q=' + encodeURIComponent(it.word_scheme || ('#' + word + '#')),
+        rank: idx + 1
+      };
+    });
+  } catch (e) { console.error('微博: ' + e.message); return []; }
 }
 
 async function getBilibili() {
@@ -199,25 +199,21 @@ async function getBilibili() {
 }
 
 async function getZhihuHot() {
-  var mirrors = [
-    'https://rsshub.rssforever.com/zhihu/hotlist',
-    'https://hub.slarker.me/zhihu/hotlist',
-    'https://rsshub.app/zhihu/hotlist'
-  ];
-  for (var i = 0; i < mirrors.length; i++) {
-    try {
-      var res = await httpGet(mirrors[i], {}, 5000);
-      if (!res.ok) continue;
-      var xml = await res.text();
-      var items = parseRSS(xml);
-      if (items.length === 0) continue;
-      console.log('知乎热榜成功: ' + mirrors[i]);
-      return items.slice(0, 8).map(function(it, idx) {
-        return { title: it.title, description: it.description || '热议中', source: '知乎热榜', time: getNow(), url: it.url, rank: idx + 1 };
-      });
-    } catch (e) { console.error('知乎热榜 ' + mirrors[i] + ': ' + e.message); }
-  }
-  return [];
+  try {
+    var res = await httpGet('https://api.zhihu.com/topstory/hot-lists/total?limit=10', {}, 5000);
+    var data = await res.json();
+    var list = (data && data.data) || [];
+    if (list.length === 0) return [];
+    console.log('知乎热榜成功: ' + list.length);
+    return list.filter(function(it) { return it.target && it.target.title; }).slice(0, 8).map(function(it, idx) {
+      var t = it.target;
+      var url = (t.url || '')
+        .replace('api.zhihu.com/questions/', 'www.zhihu.com/question/')
+        .replace('api.zhihu.com/articles/', 'zhuanlan.zhihu.com/p/')
+        .replace('api.zhihu.com', 'www.zhihu.com');
+      return { title: t.title, description: it.detail_text || '热议中', source: '知乎热榜', time: getNow(), url: url, rank: idx + 1 };
+    });
+  } catch (e) { console.error('知乎热榜: ' + e.message); return []; }
 }
 
 // ── 国际视野 ────────────────────────────────────────────────
