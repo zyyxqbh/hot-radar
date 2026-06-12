@@ -1,8 +1,8 @@
 {
-  "name": "hot-radar-v2",
-  "version": "2.0.0",
+  "name": "info-cocoon-breaker",
+  "version": "3.0.0",
   "type": "module",
-  "description": "实时热点雷达 - 聚合AI、民生、白酒行业热点",
+  "description": "信息茧房破壁机 - 聚合国内要闻、热议话题与国际新闻，对抗算法投喂",
   "scripts": {
     "dev": "vercel dev",
     "build": "echo 'No build needed'",
