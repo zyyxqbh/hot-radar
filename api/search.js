@@ -212,7 +212,7 @@ async function getZhihuHot() {
       if (items.length === 0) continue;
       console.log('知乎热榜成功: ' + items.length);
       return items.slice(0, 8).map(function(it, idx) {
-        return { title: it.title, description: it.description || '热议中', source: '知乎热榜', time: formatDate(it.pubDate) || getNow(), url: it.url, rank: idx + 1 };
+        return { title: it.title, description: it.description || '热议中', source: '知乎热榜', time: getNow(), url: it.url, rank: idx + 1 };
       });
     } catch (e) { console.error('知乎热榜 ' + sources[i] + ': ' + e.message); }
   }
