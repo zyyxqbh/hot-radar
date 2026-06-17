@@ -6,16 +6,18 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  const [headlines, hot, international] = await Promise.allSettled([
+  const [headlines, hot, international, breaking] = await Promise.allSettled([
     getHeadlines(),
     getHotTopics(),
-    getInternationalNews()
+    getInternationalNews(),
+    getBreakingPerspective()
   ]);
 
   res.status(200).json({
     headlines:     headlines.status     === 'fulfilled' ? headlines.value     : [],
     hot:           hot.status           === 'fulfilled' ? hot.value           : [],
     international: international.status === 'fulfilled' ? international.value : [],
+    breaking:      breaking.status      === 'fulfilled' ? breaking.value      : [],
     updateTime: getNow()
   });
 }
@@ -154,12 +156,34 @@ async function getHeadlines() {
 // ── 国内热议 ────────────────────────────────────────────────
 
 async function getHotTopics() {
-  var [weiboRes, biliRes, zhihuRes] = await Promise.allSettled([getWeibo(), getBilibili(), getZhihuHot()]);
+  var [weiboRes, biliRes, zhihuRes, toutiaoRes] = await Promise.allSettled([getWeibo(), getBilibili(), getZhihuHot(), getToutiao()]);
   var results = [];
-  if (weiboRes.status === 'fulfilled') results = results.concat(weiboRes.value);
-  if (biliRes.status  === 'fulfilled') results = results.concat(biliRes.value);
-  if (zhihuRes.status === 'fulfilled') results = results.concat(zhihuRes.value);
+  if (weiboRes.status   === 'fulfilled') results = results.concat(weiboRes.value);
+  if (biliRes.status    === 'fulfilled') results = results.concat(biliRes.value);
+  if (zhihuRes.status   === 'fulfilled') results = results.concat(zhihuRes.value);
+  if (toutiaoRes.status === 'fulfilled') results = results.concat(toutiaoRes.value);
   return results;
+}
+
+async function getToutiao() {
+  try {
+    var res = await httpGet('https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc',
+      { headers: { 'Referer': 'https://www.toutiao.com/' } }, 5000);
+    var data = await res.json();
+    var list = (data && data.data) || [];
+    if (list.length === 0) return [];
+    console.log('头条成功: ' + list.length);
+    return list.slice(0, 8).map(function(it, idx) {
+      return {
+        title: it.Title || it.title || '',
+        description: it.HotValue ? '热度 ' + it.HotValue : '热议中',
+        source: '今日头条',
+        time: getNow(),
+        url: it.Url || ('https://so.toutiao.com/search?keyword=' + encodeURIComponent(it.Title || '')),
+        rank: idx + 1
+      };
+    }).filter(function(it) { return it.title; });
+  } catch (e) { console.error('头条: ' + e.message); return []; }
 }
 
 async function getWeibo() {
@@ -247,4 +271,90 @@ async function getInternationalNews() {
   var seen = new Set();
   var deduped = results.filter(function(it) { if (seen.has(it.title)) return false; seen.add(it.title); return true; }).slice(0, 12);
   return await translateNews(deduped);
+}
+
+// ── 破壁视角 ────────────────────────────────────────────────
+// 平时主动不会看的异质视角：全球极客、深度科技、非大陆华语
+
+async function getBreakingPerspective() {
+  var [hn, sspai, zaobao] = await Promise.allSettled([getHackerNews(), getSspai(), getZaobao()]);
+  var results = [];
+  if (hn.status     === 'fulfilled') results = results.concat(hn.value);
+  if (sspai.status  === 'fulfilled') results = results.concat(sspai.value);
+  if (zaobao.status === 'fulfilled') results = results.concat(zaobao.value);
+  return results;
+}
+
+// 只翻译标题（用于已自带中文简介的源，避免把分数/评论数也送去翻译）
+async function translateTitles(items) {
+  if (items.length === 0) return items;
+  try {
+    var input = items.map(function(it) { return it.title; });
+    var content = await deepseekChat(
+      '你是专业的英中翻译。输入是一个JSON字符串数组，每项是一条科技/新闻标题。请翻译成简洁的中文，保持原意，不要解释。直接返回一个JSON数组，顺序和数量与输入完全一致，只输出JSON本身，不要markdown代码块标记。',
+      JSON.stringify(input),
+      1500
+    );
+    if (!content) return items;
+    var cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    var arr = JSON.parse(cleaned);
+    if (!Array.isArray(arr) || arr.length !== items.length) return items;
+    return items.map(function(it, i) { return Object.assign({}, it, { title: arr[i] || it.title }); });
+  } catch (e) { console.error('标题翻译失败: ' + e.message); return items; }
+}
+
+async function getHackerNews() {
+  try {
+    var res = await httpGet('https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=8', {}, 6000);
+    var data = await res.json();
+    var hits = (data && data.hits) || [];
+    if (hits.length === 0) return [];
+    console.log('Hacker News成功: ' + hits.length);
+    var items = hits.slice(0, 6).map(function(it, idx) {
+      return {
+        title: it.title || '',
+        description: (it.points || 0) + ' 分 · ' + (it.num_comments || 0) + ' 条讨论',
+        source: 'Hacker News',
+        time: getNow(),
+        url: it.url || ('https://news.ycombinator.com/item?id=' + it.objectID),
+        rank: idx + 1
+      };
+    }).filter(function(it) { return it.title; });
+    return await translateTitles(items);
+  } catch (e) { console.error('Hacker News: ' + e.message); return []; }
+}
+
+async function getSspai() {
+  try {
+    var res = await httpGet('https://sspai.com/feed', {}, 6000);
+    if (!res.ok) return [];
+    var xml = await res.text();
+    var items = parseRSS(xml);
+    if (items.length === 0) return [];
+    console.log('少数派成功: ' + items.length);
+    return items.slice(0, 5).map(function(it, idx) {
+      return { title: it.title, description: it.description || '点击查看详情', source: '少数派', time: formatDate(it.pubDate) || getNow(), url: it.url, rank: idx + 1 };
+    });
+  } catch (e) { console.error('少数派: ' + e.message); return []; }
+}
+
+async function getZaobao() {
+  var sources = [
+    'https://rsshub.rssforever.com/zaobao/znews/china',
+    'https://rsshub.app/zaobao/znews/china'
+  ];
+  for (var i = 0; i < sources.length; i++) {
+    try {
+      var res = await httpGet(sources[i], {}, 6000);
+      if (!res.ok) continue;
+      var xml = await res.text();
+      var items = parseRSS(xml);
+      if (items.length === 0) continue;
+      console.log('联合早报成功: ' + items.length);
+      return items.slice(0, 5).map(function(it, idx) {
+        return { title: it.title, description: it.description || '点击查看详情', source: '联合早报', time: formatDate(it.pubDate) || getNow(), url: it.url, rank: idx + 1 };
+      });
+    } catch (e) { console.error('联合早报 ' + sources[i] + ': ' + e.message); }
+  }
+  return [];
 }

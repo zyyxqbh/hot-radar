@@ -93,6 +93,7 @@
     <button class="tab-btn active" onclick="switchTab('headlines', this)">📰 今日要闻</button>
     <button class="tab-btn" onclick="switchTab('hot', this)">🔥 国内热议</button>
     <button class="tab-btn" onclick="switchTab('international', this)">🌍 国际视野</button>
+    <button class="tab-btn" onclick="switchTab('breaking', this)">🧭 破壁视角</button>
   </div>
 
   <div id="panel-headlines" class="panel active">
@@ -108,6 +109,11 @@
   <div id="panel-international" class="panel">
     <div class="panel-status" id="status-international"></div>
     <div class="panel-body"><div class="empty">点击「刷新热点」加载国际新闻</div></div>
+  </div>
+
+  <div id="panel-breaking" class="panel">
+    <div class="panel-status" id="status-breaking"></div>
+    <div class="panel-body"><div class="empty">点击「刷新热点」加载破壁视角</div></div>
   </div>
 </div>
 
@@ -211,7 +217,7 @@ function renderGroupedSection(key, items) {
 
 function setLoading() {
   var loadingHtml = '<div class="loading"><div class="spinner"></div>加载中...</div>';
-  ['headlines', 'hot', 'international'].forEach(function(k) {
+  ['headlines', 'hot', 'international', 'breaking'].forEach(function(k) {
     document.querySelector('#panel-' + k + ' .panel-body').innerHTML = loadingHtml;
     var status = document.getElementById('status-' + k);
     if (status) status.textContent = '';
@@ -230,11 +236,12 @@ async function loadData() {
     renderSection('headlines', data.headlines);
     renderGroupedSection('hot', data.hot);
     renderSection('international', data.international);
+    renderGroupedSection('breaking', data.breaking);
     if (data.updateTime) {
       document.getElementById('updateTime').textContent = '更新于 ' + data.updateTime;
     }
   } catch (e) {
-    ['headlines', 'hot', 'international'].forEach(function(k) {
+    ['headlines', 'hot', 'international', 'breaking'].forEach(function(k) {
       document.querySelector('#panel-' + k + ' .panel-body').innerHTML = '<div class="empty">请求失败，请检查网络后重试</div>';
     });
   }
